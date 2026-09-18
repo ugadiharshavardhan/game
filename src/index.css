@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+/**
+ * The palette. Canvas-side counterparts live in `src/game/config/constants.ts`
+ * as hex numbers — keep the two in sync.
+ */
+@theme {
+  --color-night-950: #05070f;
+  --color-night-900: #0b1020;
+  --color-night-800: #151c33;
+  --color-night-700: #232c4a;
+
+  --color-dusk-400: #8b9bd4;
+
+  --color-lamp-200: #fbdf9b;
+  --color-lamp-400: #f6c453;
+  --color-lamp-600: #c98a1f;
+
+  --font-display: Georgia, 'Times New Roman', serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-night-950);
+    color: var(--color-lamp-200);
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+    /* Stop the page rubber-banding while the player drags the joystick. */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Phaser's canvas is inline by default, which leaves a few stray pixels. */
+  canvas {
+    display: block;
+  }
+}
+
+@layer components {
+  /* Keep UI clear of notches and home indicators on phones. */
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
