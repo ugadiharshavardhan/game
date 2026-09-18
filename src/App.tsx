@@ -3,14 +3,16 @@ import { EventBus } from './shared/EventBus';
 import type { AppState } from './shared/types';
 import { MainMenu } from './ui/components/MainMenu';
 import { PauseOverlay } from './ui/components/PauseOverlay';
-import { PhaserGame } from './ui/components/PhaserGame';
+import { GameCanvas } from './ui/components/GameCanvas';
+import { Hud } from './ui/components/Hud';
+import { useGameEvent } from './ui/hooks/useGameEvent';
 
 /**
  * The app-level state machine (GAME_DESIGN.md §3.1).
  *
- * Phase 0 implements `menu` and `playing`; `briefing`, `results` and
- * `leaderboard` join as their phases land. Phaser is mounted only while
- * playing — quitting unmounts `PhaserGame`, which destroys the engine.
+ * Implements `menu` and `playing`; `briefing`, `results` and `leaderboard`
+ * join as their phases land. The 3D engine is mounted only while playing —
+ * quitting unmounts `GameCanvas`, which destroys the engine.
  */
 export default function App() {
   const [appState, setAppState] = useState<AppState>('menu');
@@ -27,8 +29,8 @@ export default function App() {
   }, []);
 
   // Escape/P toggles pause; losing the tab always pauses. This lives here rather
-  // than in Phaser because a paused scene stops receiving its own input — a
-  // Phaser-side handler could pause the game but never un-pause it.
+  // than in the engine because a paused engine stops reading its own input — an
+  // engine-side handler could pause the game but never un-pause it.
   useEffect(() => {
     if (appState !== 'playing') return;
 
@@ -49,7 +51,13 @@ export default function App() {
     };
   }, [appState]);
 
-  // React owns pause state; Phaser only obeys. One owner, one direction.
+  // While the mouse is captured the browser swallows Esc and just releases the
+  // pointer, so losing the pointer lock is the desktop "pause" signal.
+  useGameEvent('ui:pointer-lock', ({ locked }) => {
+    if (!locked && appState === 'playing') setPaused(true);
+  });
+
+  // React owns pause state; the engine only obeys. One owner, one direction.
   useEffect(() => {
     if (appState !== 'playing') return;
     EventBus.emit(paused ? 'game:pause' : 'game:resume');
@@ -61,14 +69,15 @@ export default function App() {
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-night-950">
-      <PhaserGame />
+      <GameCanvas />
+      {!paused && <Hud />}
 
       {/*
         The HUD wrapper is pointer-events-none so that touches pass through to
         the canvas and drive the virtual joystick; only real controls opt back in.
       */}
       {!paused && (
-        <div className="safe-top pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-end p-3">
+        <div className="safe-top pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end p-3">
           <button
             type="button"
             onClick={() => setPaused(true)}

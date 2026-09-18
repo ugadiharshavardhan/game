@@ -1,9 +1,9 @@
 /**
- * A tiny typed event emitter — deliberately NOT Phaser.Events.EventEmitter.
+ * A tiny typed event emitter — deliberately independent of the engine.
  *
- * React components subscribe to this bus. If it were Phaser's emitter, every
- * React module that imports it would drag the ~1.3MB Phaser bundle into the
- * main chunk and the main menu would pay for an engine it hasn't started yet.
+ * React components subscribe to this bus. If it lived in the engine, every
+ * React module that imports it would drag Three.js and Rapier into the main
+ * chunk and the main menu would pay for an engine it hasn't started yet.
  * Forty lines here buys a menu that loads instantly.
  */
 

@@ -1,36 +1,42 @@
 /**
- * The single typed contract between the React layer and the Phaser layer.
+ * The single typed contract between the React layer and the 3D engine layer.
  *
  * Rule: if it isn't in this map, it doesn't cross the boundary. React never
- * holds a Phaser object; Phaser never touches the DOM outside its canvas.
+ * holds a Three.js object; the engine never touches the DOM outside its canvas
+ * (pointer lock and window input listeners excepted).
  *
  * Naming convention:
- *   `ui:*`     Phaser -> React, "something happened, you may want to render it"
- *   `game:*`   React -> Phaser, "do this"
- *   everything else is a simulation fact broadcast by Phaser.
+ *   `ui:*`     engine -> React, "something happened, you may want to render it"
+ *   `game:*`   React -> engine, "do this"
+ *   `input:*`  React -> engine, on-screen controls
+ *   everything else is a simulation fact broadcast by the engine.
  */
 
-import type { RunResult } from './types';
+import type { PlayerStateName, RunResult } from './types';
 
 export interface GameEventMap {
-  // ---- Phaser -> React -------------------------------------------------
-  /** Asset loading progress, 0..1. Wired now, meaningful once assets exist. */
+  // ---- engine -> React -------------------------------------------------
+  /** Asset loading progress, 0..1. */
   'preload:progress': { progress: number };
-  /** The gameplay scene is live and the canvas is worth showing. */
+  /** The world is built and the first frame rendered; the canvas is worth showing. */
   'scene:ready': { scene: string };
   /** A run began. */
   'run:started': { seed: number };
   /** A run ended; payload is everything the results screen needs. */
   'run:completed': RunResult;
+  /** The interactable the player is facing changed. `null` hides the prompt. */
+  'ui:prompt': { text: string } | null;
+  /** The player's state changed (idle, walking, running, sneaking, interacting, hidden). */
+  'ui:player-state': { state: PlayerStateName };
+  /** Mouse capture changed. The browser releases it on Esc, which React treats as "pause". */
+  'ui:pointer-lock': { locked: boolean };
 
-  // ---- React -> Phaser -------------------------------------------------
-  /**
-   * Pause is React-owned. The Escape/P key is handled by a window listener in
-   * `App.tsx`, not by Phaser: a paused scene stops receiving its own input, so
-   * a Phaser-side handler could pause but never un-pause. One owner, one event.
-   */
+  // ---- React -> engine -------------------------------------------------
+  /** Pause is React-owned; the engine only obeys. */
   'game:pause': undefined;
   'game:resume': undefined;
+  /** On-screen buttons for touch devices. */
+  'input:action': { action: 'interact' | 'crouch' };
 }
 
 export type GameEventName = keyof GameEventMap;

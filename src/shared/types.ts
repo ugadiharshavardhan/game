@@ -1,9 +1,9 @@
 /**
- * Domain types shared by BOTH layers (React UI and Phaser).
+ * Domain types shared by BOTH layers (React UI and the 3D engine).
  *
- * Nothing in `src/shared/` may import Phaser. This directory is the contract
- * between the two layers, and keeping it Phaser-free is what allows the whole
- * Phaser engine to be lazy-loaded only when the player presses Play.
+ * Nothing in `src/shared/` may import Three.js or the engine. This directory is the contract
+ * between the two layers, and keeping it engine-free is what allows the whole
+ * engine to be lazy-loaded only when the player presses Play.
  *
  * The full data model (items, houses, offering manifests, spawn rules) is
  * specified in `docs/GAME_DESIGN.md` §6 and lands with the systems that use it.
@@ -17,6 +17,9 @@ export interface Vec2 {
 
 /** App-level state machine owned by React. See GAME_DESIGN.md §3.1. */
 export type AppState = 'menu' | 'playing';
+
+/** Mirrors the engine's PlayerStateId values; duplicated here so React never imports the engine. */
+export type PlayerStateName = 'idle' | 'walking' | 'running' | 'sneaking' | 'interacting' | 'hidden';
 
 /** Moon cycle phases owned by MoonCycleSystem. See GAME_DESIGN.md §3.2. */
 export type MoonPhase = 'day' | 'dusk' | 'moonrise' | 'moonlight' | 'moonset';

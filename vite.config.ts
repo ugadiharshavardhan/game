@@ -13,18 +13,8 @@ export default defineConfig({
 
   build: {
     target: 'es2022',
-    rollupOptions: {
-      output: {
-        // Phaser is already split out by the dynamic import in PhaserGame.tsx;
-        // naming the chunk keeps it stable and cacheable across releases.
-        manualChunks(id) {
-          if (id.includes('node_modules/phaser')) return 'phaser';
-          return undefined;
-        },
-      },
-    },
-    // Phaser alone is ~1.3MB. It is a lazy chunk, so the default 500kB warning
-    // is noise rather than signal here.
-    chunkSizeWarningLimit: 1600,
+    // The engine chunk (Three.js + Rapier's embedded WASM) is lazy-loaded when the player
+    // presses Play, so the menu never pays for it. ~1.3 MB gzipped is expected.
+    chunkSizeWarningLimit: 4000,
   },
 });
