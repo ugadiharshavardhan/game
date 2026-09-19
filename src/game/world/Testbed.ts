@@ -29,16 +29,8 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import type { Physics } from '../core/Physics';
 import { TestDoor, TestPickup, TestShrine } from './testInteractables';
 import type { Interactable } from '../player/PlayerInteraction';
+import type { World } from './World';
 
-export interface World {
-  interactables: Interactable[];
-  spawn: Vector3;
-  spawnYaw: number;
-  sun: DirectionalLight;
-  /** Keeps the shadow frustum centred on the player for crisp shadows. */
-  follow(target: Vector3): void;
-  dispose(): void;
-}
 
 const ASSETS = `${import.meta.env.BASE_URL}assets/textures`;
 

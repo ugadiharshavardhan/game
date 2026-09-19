@@ -2,7 +2,7 @@ import type { Collider, KinematicCharacterController, RigidBody } from '@dimforg
 import { MathUtils, Vector3 } from 'three';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { Input } from '../core/Input';
-import type { Physics } from '../core/Physics';
+import { groups, Layer, PLAYER_QUERY, type Physics } from '../core/Physics';
 import { deriveLocomotionState, smoothDamp, smoothDampAngle, stepSpeed, targetSpeed } from './locomotion';
 import type { PlayerState } from './PlayerState';
 
@@ -53,7 +53,12 @@ export class PlayerController {
     this.body = world.createRigidBody(
       R.RigidBodyDesc.kinematicPositionBased().setTranslation(spawn.x, spawn.y + this.height / 2 + 0.02, spawn.z),
     );
-    this.collider = world.createCollider(R.ColliderDesc.capsule(this.halfSegment(this.height), config.radius), this.body);
+    this.collider = world.createCollider(
+      R.ColliderDesc.capsule(this.halfSegment(this.height), config.radius).setCollisionGroups(
+        groups(Layer.Player, Layer.World | Layer.Blocker | Layer.Prop | Layer.Trigger),
+      ),
+      this.body,
+    );
     this.kcc = world.createCharacterController(0.02);
     this.kcc.setUp({ x: 0, y: 1, z: 0 });
     this.kcc.enableAutostep(config.stepHeight, 0.15, false);
@@ -90,7 +95,12 @@ export class PlayerController {
     this.desired.copy(this.moveDir).multiplyScalar(this.planarSpeed * dt).addScaledVector(UP, this.verticalSpeed * dt);
 
     this.updateHeight(dt);
-    this.kcc.computeColliderMovement(this.collider, this.desired, this.physics.R.QueryFilterFlags.EXCLUDE_SENSORS);
+    this.kcc.computeColliderMovement(
+      this.collider,
+      this.desired,
+      this.physics.R.QueryFilterFlags.EXCLUDE_SENSORS,
+      PLAYER_QUERY,
+    );
     const moved = this.kcc.computedMovement();
     this.grounded = this.kcc.computedGrounded();
 

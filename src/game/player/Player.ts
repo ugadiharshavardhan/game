@@ -1,5 +1,6 @@
 import { type AnimationClip, Group, type Material, Mesh, type Object3D, type Scene, SkinnedMesh, Vector3 } from 'three';
 import { EventBus } from '../../shared/EventBus';
+import type { CameraTarget } from '../camera/ThirdPersonCamera';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { AudioBank } from '../core/AudioBank';
 import type { Input } from '../core/Input';
@@ -14,7 +15,7 @@ import { PlayerState, PlayerStateId } from './PlayerState';
  * The playable devotee: model + controller + state + animation + interaction + audio.
  * Update order each frame: input → interaction → movement → animation → audio.
  */
-export class Player implements InteractionActor {
+export class Player implements InteractionActor, CameraTarget {
   readonly state = new PlayerState();
   readonly controller: PlayerController;
   readonly animation: PlayerAnimation;
@@ -23,6 +24,9 @@ export class Player implements InteractionActor {
   readonly root = new Group();
   private readonly unsubscribe: () => void;
   private readonly input: Input;
+  private readonly materials: Material[] = [];
+  private hiddenIndoors = false;
+  private cameraFade = 1;
 
   constructor(
     model: Object3D,
@@ -38,6 +42,9 @@ export class Player implements InteractionActor {
   ) {
     this.input = input;
     prepareMaterials(model);
+    model.traverse((o) => {
+      if (o instanceof Mesh) this.materials.push(...(Array.isArray(o.material) ? o.material : [o.material]));
+    });
     this.root.name = 'Player';
     this.root.add(model);
     scene.add(this.root);
@@ -66,8 +73,45 @@ export class Player implements InteractionActor {
     return this.controller.yaw;
   }
 
+  // ---- CameraTarget --------------------------------------------------------------------------
+
+  get bodyHeight(): number {
+    return this.controller.height;
+  }
+
+  get planarSpeed(): number {
+    return this.controller.planarSpeed;
+  }
+
+  get collider() {
+    return this.controller.collider;
+  }
+
+  get gait(): 'normal' | 'run' | 'sneak' {
+    const s = this.state.value;
+    return s === PlayerStateId.Running ? 'run' : s === PlayerStateId.Sneaking ? 'sneak' : 'normal';
+  }
+
+  /** Fades the character out as the camera closes in, so it never renders the inside of the head. */
+  setCameraFade(alpha: number): void {
+    const a = Math.round(alpha * 20) / 20; // quantised: no material churn on sub-percent changes
+    if (a === this.cameraFade) return;
+    this.cameraFade = a;
+    for (const m of this.materials) {
+      m.transparent = a < 1;
+      m.opacity = a;
+      m.depthWrite = a >= 1;
+    }
+    this.applyVisibility();
+  }
+
   setVisible(visible: boolean): void {
-    this.root.visible = visible;
+    this.hiddenIndoors = !visible;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    this.root.visible = !this.hiddenIndoors && this.cameraFade > 0.02;
   }
 
   update(dt: number, cameraYaw: number): void {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EventBus } from '../../shared/EventBus';
 import type { PlayerStateName } from '../../shared/types';
 import { useGameEvent } from '../hooks/useGameEvent';
@@ -22,8 +22,18 @@ export function Hud() {
   const [prompt, setPrompt] = useState<string | null>(null);
   const [state, setState] = useState<PlayerStateName>('idle');
   const [locked, setLocked] = useState(false);
+  const [area, setArea] = useState<{ name: string; open: boolean; key: number } | null>(null);
 
   useGameEvent('ui:prompt', (p) => setPrompt(p?.text ?? null));
+  // Place names, adventure-game style: fade in on arrival, fade out after a few seconds.
+  useGameEvent('ui:area', (a) => {
+    if (a) setArea({ ...a, key: Date.now() });
+  });
+  useEffect(() => {
+    if (!area) return;
+    const t = setTimeout(() => setArea(null), 3200);
+    return () => clearTimeout(t);
+  }, [area]);
   useGameEvent('ui:player-state', ({ state: s }) => setState(s));
   useGameEvent('ui:pointer-lock', ({ locked: l }) => setLocked(l));
 
@@ -35,6 +45,20 @@ export function Hud() {
         />
         {STATE_LABEL[state]}
       </div>
+
+      {area && (
+        <div key={area.key} className="safe-top absolute inset-x-0 top-16 flex justify-center">
+          <div className="animate-[area-in_3.2s_ease-in-out_forwards] text-center">
+            <p className="font-display text-2xl tracking-wide text-lamp-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] sm:text-3xl">
+              {area.name}
+            </p>
+            <div className="mx-auto mt-2 h-px w-24 bg-linear-to-r from-transparent via-lamp-400/70 to-transparent" />
+            {area.open && (
+              <p className="mt-2 text-[10px] uppercase tracking-[0.3em] text-dusk-400/90">Open ground · no cover</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {prompt && (
         <div className="safe-bottom absolute inset-x-0 bottom-24 flex justify-center">
@@ -53,7 +77,7 @@ export function Hud() {
 
       {!isTouch && !locked && (
         <p className="absolute inset-x-0 bottom-8 text-center text-xs tracking-wide text-lamp-200/60">
-          Click to look around · WASD move · Shift run · Ctrl slow walk · C crouch · E interact
+          Click to look around · WASD move · Shift run · Ctrl slow walk · C crouch · E interact · Wheel zoom
         </p>
       )}
 

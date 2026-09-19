@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { EventBus } from './shared/EventBus';
 import type { AppState } from './shared/types';
 import { MainMenu } from './ui/components/MainMenu';
-import { PauseOverlay } from './ui/components/PauseOverlay';
+import { type CameraSettings, PauseOverlay } from './ui/components/PauseOverlay';
 import { GameCanvas } from './ui/components/GameCanvas';
 import { Hud } from './ui/components/Hud';
 import { useGameEvent } from './ui/hooks/useGameEvent';
@@ -14,9 +14,35 @@ import { useGameEvent } from './ui/hooks/useGameEvent';
  * join as their phases land. The 3D engine is mounted only while playing —
  * quitting unmounts `GameCanvas`, which destroys the engine.
  */
+const CAMERA_KEY = 'moonlight-seva.camera';
+const DEFAULT_CAMERA: CameraSettings = { sensitivity: 1, invertY: false };
+
+function loadCameraSettings(): CameraSettings {
+  try {
+    const raw = localStorage.getItem(CAMERA_KEY);
+    return raw ? { ...DEFAULT_CAMERA, ...(JSON.parse(raw) as Partial<CameraSettings>) } : DEFAULT_CAMERA;
+  } catch {
+    return DEFAULT_CAMERA;
+  }
+}
+
 export default function App() {
   const [appState, setAppState] = useState<AppState>('menu');
   const [paused, setPaused] = useState(false);
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(loadCameraSettings);
+
+  const changeCamera = useCallback((next: CameraSettings) => {
+    setCameraSettings(next);
+    EventBus.emit('game:camera-settings', next);
+    try {
+      localStorage.setItem(CAMERA_KEY, JSON.stringify(next));
+    } catch {
+      // Private mode or blocked storage: the setting still applies for this session.
+    }
+  }, []);
+
+  // The engine loads asynchronously; hand it the saved settings once it's up.
+  useGameEvent('scene:ready', () => EventBus.emit('game:camera-settings', cameraSettings));
 
   const startRun = useCallback(() => {
     setPaused(false);
@@ -89,7 +115,14 @@ export default function App() {
         </div>
       )}
 
-      {paused && <PauseOverlay onResume={() => setPaused(false)} onQuit={quitToMenu} />}
+      {paused && (
+        <PauseOverlay
+          onResume={() => setPaused(false)}
+          onQuit={quitToMenu}
+          camera={cameraSettings}
+          onCameraChange={changeCamera}
+        />
+      )}
     </main>
   );
 }
