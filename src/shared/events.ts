@@ -28,6 +28,8 @@ export interface GameEventMap {
   'ui:prompt': { text: string } | null;
   /** The player's state changed (idle, walking, running, sneaking, interacting, hidden). */
   'ui:player-state': { state: PlayerStateName };
+  /** The player walked into a named place (null between places). `open` = no cover from the moon. */
+  'ui:area': { name: string; open: boolean } | null;
   /** Mouse capture changed. The browser releases it on Esc, which React treats as "pause". */
   'ui:pointer-lock': { locked: boolean };
 
@@ -35,6 +37,8 @@ export interface GameEventMap {
   /** Pause is React-owned; the engine only obeys. */
   'game:pause': undefined;
   'game:resume': undefined;
+  /** Player-facing camera settings from the pause menu (persisted by React). */
+  'game:camera-settings': { sensitivity: number; invertY: boolean };
   /** On-screen buttons for touch devices. */
   'input:action': { action: 'interact' | 'crouch' };
 }

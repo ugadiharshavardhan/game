@@ -55,3 +55,20 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+/* Place-name title: rise in, hold, fade away. */
+@keyframes area-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  15%,
+  75% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
