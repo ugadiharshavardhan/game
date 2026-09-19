@@ -2,7 +2,6 @@
 
 Files Phaser loads by URL at runtime belong here — `PreloadScene` requests them
 as `assets/images/…` and `assets/audio/…`.
-
 Anything in `public/` is copied verbatim into the build and is **not** processed
 or hashed by Vite. That is what we want for game assets: Phaser builds its load
 paths as strings at runtime, so they must not be renamed by the bundler.
