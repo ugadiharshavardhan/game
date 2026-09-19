@@ -1,5 +1,5 @@
 /**
- * The Ganeshotsav pandal on the festival ground, the evening before the idol comes home.
+ * The Ganeshotsav pandal on the festival ground, on the evening Bappa comes home.
  *
  * Anatomy, outside in: six bamboo poles lashed to tie beams, rafters and a ridge · a tented
  * shamiana roof in saffron and maroon stripes, sagging between the rafters, edged with a scalloped
@@ -7,12 +7,13 @@
  * marigold swags beneath it, banana plants tied to the entrance posts, saffron flags above ·
  * striped kanaat walls along the sides · inside, a durrie on the ground, a cloth-skirted stage, the
  * painted backdrop between saffron drapes with a real marigold garland round its halo, and on the
- * stage the draped chowki waiting for Bappa, with the kalash, two brass samai and a row of diyas.
+ * stage Bappa himself — arrived and seated on the draped chowki, his face still veiled in silk until
+ * the installation — with the kalash, two brass samai and a row of diyas.
  *
  * Collision parity: the stage (7 × 0.7 × 2.5 m), the six poles and the two side walls are the
  * solids in solids.ts → landmarkSolids('pandal'); everything else is overhead or soft cloth.
  */
-import { BoxGeometry, BufferGeometry, Color, Float32BufferAttribute, Group, Matrix4, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group, Matrix4, Quaternion, Vector3 } from 'three';
 import type { LandmarkDef } from '../../types';
 import { rng } from './canvasTextures';
 import { clothGrid, pleated, tassel, valance } from './festival.cloth';
@@ -384,12 +385,10 @@ function stageThings(a: ArtContext, d: FestBatch, orn: Ornaments, M: Matrix4): v
   const skirt = (len: number, drop: number, m: Matrix4) => d.add('cloth', clothGrid(14, 4, (u, v) => new Vector3(-len / 2 + u * len, -v * drop, 0.012 * Math.sin(u * Math.PI * 9) * v + 0.02 * v * v), (_i, j) => (j === 3 ? zari : silk), [len, drop], (u) => 0.88 + 0.12 * Math.cos(u * Math.PI * 18)), m);
   skirt(1.05, 0.3, place(0, seat + 0.005, cz + 0.376));
   for (const s of [-1, 1]) skirt(0.75, 0.24, place(s * 0.526, seat + 0.005, cz, s * Math.PI / 2));
-  heap(d, place(0, seat + 0.006, cz - 0.02), 0.22, 0.05, C.rice);
-  d.add('paint', lathe([[0.001, 0.058], [0.03, 0.056], [0.035, 0.054]], 10).translate(0, seat, cz - 0.02), TONE.sindoor);
-  for (const [x, z, k] of [[-0.3, 0.18, 0], [0.32, 0.2, 1], [0.34, -0.22, 2]] as const) {
-    if (k === 1) hibiscus(d, place(x, seat + 0.006, cz + z, 0.6));
-    else flowerHeap(d, place(x, seat + 0.006, cz + z), 0.04, 0.01, 3, MARIGOLDS, 7 + k);
-  }
+  heap(d, place(0, seat + 0.006, cz - 0.02), 0.3, 0.04, C.rice);
+  // Bappa has come home: seated on the rice, face still veiled in silk until the installation.
+  coveredMurti(d, orn, Wp, 0, seat + 0.03, cz - 0.04);
+  for (const [x, z] of [[-0.44, 0.3], [0.44, 0.3]] as const) hibiscus(d, place(x, seat + 0.006, cz + z, 0.6));
   orn.garland(Wp(catenary(new Vector3(-0.5, seat - 0.02, cz + 0.4), new Vector3(0.5, seat - 0.02, cz + 0.4), 0.16, 14)));
 
   // The kalash on a thali of rice, to the chowki's right.
@@ -433,6 +432,66 @@ function stageThings(a: ArtContext, d: FestBatch, orn: Ornaments, M: Matrix4): v
     const m = place(-3.0 + i * 0.5, top, STAGE_FRONT - 0.14, i * 1.3);
     flame(m, diya(d, m));
   }
+}
+
+// ---- The murti --------------------------------------------------------------------------------------
+
+/**
+ * The Ganesha murti as it is brought home: seated, its face covered with a saffron silk cloth until
+ * the pranapratishtha. The drape falls from the crown's point over the broad ears and the curve of
+ * the trunk, pools in folds on the rice, and is edged with gold zari; a marigold garland rests on it.
+ */
+function coveredMurti(d: FestBatch, orn: Ornaments, Wp: ToWorldPts, x: number, y: number, z: number): void {
+  // Silhouette under the cloth: [radius, height] from the seat up to the crown's tip (~1.2 m).
+  const profile: [number, number][] = [
+    [0.001, 0], [0.43, 0], [0.45, 0.03], [0.43, 0.1], [0.37, 0.19], [0.33, 0.3], [0.35, 0.42], [0.31, 0.55],
+    [0.3, 0.64], [0.25, 0.73], [0.3, 0.8], [0.32, 0.88], [0.28, 0.96], [0.2, 1.03], [0.13, 1.09], [0.06, 1.16], [0.02, 1.2], [0.001, 1.21],
+  ];
+  const H = 1.21;
+  const g = lathe(profile, 36);
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  const silk = new Color('#e3741f');
+  const deep = new Color('#b8431a');
+  const zari = new Color(C.gold);
+  const c = new Color();
+  for (let i = 0; i < pos.count; i++) {
+    let px = pos.getX(i);
+    const py = pos.getY(i);
+    let pz = pos.getZ(i);
+    const r = Math.hypot(px, pz);
+    if (r < 1e-4) continue;
+    const th = Math.atan2(px, pz); // 0 = front (+z)
+    const t = Math.min(Math.max(py / H, 0), 1); // float32 puts the tip a hair above H
+    // Folds: deep near the hem where the cloth pools, shallow at the crown it hangs from.
+    const foldAmp = 0.055 * (1 - t) ** 1.4 + 0.006;
+    const fold = Math.sin(9 * th + 2 * Math.sin(3 * th) + t * 4);
+    let k = 1 + foldAmp * fold;
+    // The trunk, curving down the front under the cloth; the ears to either side.
+    k += 0.26 * Math.exp(-(((py - 0.72) / 0.1) ** 2)) * Math.max(0, Math.cos(th)) ** 6;
+    k += 0.14 * Math.exp(-(((py - 0.86) / 0.07) ** 2)) * Math.abs(Math.sin(th)) ** 4;
+    px *= k;
+    pz *= k * 0.84;
+    pos.setXYZ(i, px, py, pz);
+    // Silk, darker in the folds' hollows; a gold zari border at the hem and round the shoulders.
+    const hollow = 0.5 - 0.5 * fold;
+    c.copy(silk).lerp(deep, hollow * (0.35 + 0.4 * (1 - t)));
+    if (py < 0.07 || Math.abs(py - 0.6) < 0.018) c.copy(zari).multiplyScalar(0.9 + 0.1 * fold);
+    col.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute('color', new Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  d.add('cloth', g.translate(x, y, z));
+  // A tassel at the crown, and the garland resting over the shoulders down to the lap.
+  d.add('paint', new CylinderGeometry(0.012, 0.03, 0.09, 8).translate(x, y + H + 0.03, z), C.gold);
+  const loop: Vector3[] = [];
+  // Round the back to the front and back again, stopping short of closing (no zero-length span).
+  for (let i = 0; i <= 25; i++) {
+    const a = (i / 26) * Math.PI * 2 + Math.PI / 26;
+    const front = Math.max(0, Math.cos(a));
+    loop.push(new Vector3(x + Math.sin(a) * 0.33, y + 0.64 - 0.3 * front ** 2, z + Math.cos(a) * 0.3 * 0.9 + 0.03 * front));
+  }
+  orn.garland(Wp(loop));
 }
 
 // ---- Lights ------------------------------------------------------------------------------------

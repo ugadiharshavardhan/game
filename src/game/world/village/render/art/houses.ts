@@ -17,6 +17,7 @@ import {
   IcosahedronGeometry,
   LOD,
   Mesh,
+  type MeshBasicMaterial,
   type Object3D,
   PlaneGeometry,
   TorusGeometry,
@@ -24,8 +25,9 @@ import {
 } from 'three';
 import { DOOR_H, DOOR_W, houseDims, type HouseDims, PLINTH_H, ROOF_OVERHANG, roofShape, STEP_COUNT, STEP_RISE, STEP_RUN, STOREY_H, toWorld } from '../../dims';
 import type { HouseDef } from '../../types';
-import { rangoli, type RangoliStyle, rng } from './canvasTextures';
-import { Batch, beam, box, boxUV, catenary, fill, lathe, leanTo, pitchedRoof, place, slab, turnedPost, weather } from './geom';
+import { glow, rangoli, type RangoliStyle, rng } from './canvasTextures';
+import { furnishRoom, moonbeams, openShell } from './houses.interior';
+import { Batch, beam, box, boxUV, catenary, fill, lathe, leanTo, pitchedRoof, place, type Remap, slab, turnedPost, weather } from './geom';
 import { TILE } from './materials';
 import { DADO_PAINT, TONE, WALL_PAINT, WOOD_PAINT } from './palette';
 import type { ArtContext } from './runtime';
@@ -33,6 +35,13 @@ import type { ArtContext } from './runtime';
 /** LOD switch distances, metres. */
 const LOD1 = 38;
 const LOD2 = 85;
+/** A shelter's furnished room is only drawn this close: you only see into it from nearby. */
+const ROOM_REACH = 18;
+/**
+ * Fewer materials per house, fewer draw calls (and shadow draws): iron and brass fittings are
+ * painted colour, teak shares the wood texture, the cot's cloth is paint.
+ */
+const METALS: Remap = { iron: ['paint', TONE.iron], brass: ['paint', '#b8903a'], teak: ['wood', '#6a472d'], fabric: ['paint', '#cdb27c'] };
 
 export function buildHouses(a: ArtContext, houses: readonly HouseDef[]): Map<string, Object3D> {
   const hinges = new Map<string, Object3D>();
@@ -59,22 +68,25 @@ function buildHouse(a: ArtContext, h: HouseDef): Object3D {
   root.position.set(h.x, 0, h.z);
   root.rotation.y = h.rot;
 
+  // Which windows are lit is decided once, so the levels of detail agree.
+  const lit = windowsFor(h, d).map(() => (h.shelter ? r() < 0.55 : r() < 0.12));
+  // Living detail — lamps, diyas, pots, the cot — joins the full-detail level's batch (no extra
+  // draw calls); the decals and the room behind the door are their own groups, culled by distance.
+  const decals = new Group();
+  const room = new Group();
   const lod = new LOD();
-  lod.addLevel(level(a, h, d, style, 0, r), 0);
-  lod.addLevel(level(a, h, d, style, 1, r), LOD1);
-  lod.addLevel(level(a, h, d, style, 2, r), LOD2);
-  root.add(lod);
+  lod.addLevel(level(a, h, d, style, 0, lit, (b) => details(a, h, d, style, r, b, decals, room)), 0);
+  lod.addLevel(level(a, h, d, style, 1, lit), LOD1);
+  lod.addLevel(level(a, h, d, style, 2, lit), LOD2);
+  root.add(lod, decals, room);
+  a.culler.add(decals, new Vector3(h.x, 0, h.z), LOD1 + 6);
+  a.culler.add(room, new Vector3(h.x, 0, h.z), ROOM_REACH);
 
   // The door leaf swings on its hinge, outside the LOD so it never pops.
   const hinge = new Group();
   hinge.position.set(d.doorX - DOOR_W / 2, PLINTH_H + 0.01, d.wallFace + 0.02);
   hinge.add(doorLeaf(a, h, style.wood));
   root.add(hinge);
-
-  // Living detail: lamps, diyas, rangoli — full-detail only, and they register lights and flames.
-  const detail = details(a, h, d, style, r, root);
-  root.add(detail);
-  a.culler.add(detail, new Vector3(h.x, 0, h.z), LOD1 + 6);
 
   a.root.add(root);
   return hinge;
@@ -83,8 +95,8 @@ function buildHouse(a: ArtContext, h: HouseDef): Object3D {
 type Style = { paint: Color; dado: Color; wood: Color; rubble: boolean; tile: Color; seed: number; hut: boolean };
 
 /** One level of detail. 0 = everything; 1 = no fine detail; 2 = a shell. */
-function level(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, lvl: 0 | 1 | 2, r: () => number): Group {
-  const b = new Batch();
+function level(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, lvl: 0 | 1 | 2, lit: boolean[], extra?: (b: Batch) => void): Group {
+  const b = new Batch({ remap: METALS });
   const W = d.halfW * 2;
   const D = d.halfD * 2;
   const wallTop = d.eaveH;
@@ -105,30 +117,39 @@ function level(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, lvl: 0 | 1 | 
   }
 
   // ---- walls ----------------------------------------------------------------------------------
-  const body = slab('plaster', W, d.wallH, D, 0, PLINTH_H + d.wallH / 2, 0, Math.max(3, Math.round(d.wallH * 1.6)));
-  b.add('plaster', weather(body, s.paint, { ground: PLINTH_H, splash: 1.0, strength: 0.26, top: wallTop, topStrength: 0.16, seed: s.seed }));
-  if (lvl < 2 && !s.hut) {
+  // A shelter seen up close is open: doorway, windows and the room behind are real.
+  const open = lvl === 0 && h.shelter;
+  if (open) {
+    openShell(b, h, d, s);
+  } else {
+    const body = slab('plaster', W, d.wallH, D, 0, PLINTH_H + d.wallH / 2, 0, Math.max(3, Math.round(d.wallH * 1.6)));
+    b.add('plaster', weather(body, s.paint, { ground: PLINTH_H, splash: 1.0, strength: 0.26, top: wallTop, topStrength: 0.16, seed: s.seed }));
+  }
+  if (lvl < 2 && !s.hut && !open) {
     b.add('plaster', weather(slab('plaster', W + 0.03, 0.78, D + 0.03, 0, PLINTH_H + 0.39, 0, 2), s.dado, { ground: PLINTH_H, splash: 0.5, strength: 0.22, seed: s.seed }));
     b.add('plaster', weather(box('plaster', W + 0.05, 0.06, D + 0.05, 0, PLINTH_H + 0.8, 0), '#efe7d6', { ground: 0, strength: 0.05 }));
     if (h.storeys === 2) b.add('stone', weather(box('stone', W + 0.14, 0.15, D + 0.14, 0, PLINTH_H + STOREY_H, 0), TONE.cement, { ground: 0, strength: 0.1 }));
   }
+  if (open && h.storeys === 2) b.add('stone', weather(box('stone', W + 0.14, 0.15, D + 0.14, 0, PLINTH_H + STOREY_H, 0), TONE.cement, { ground: 0, strength: 0.1 }));
 
   // ---- door and windows -------------------------------------------------------------------------
-  // The doorway itself is a dark plane on the wall face; the leaf swings in front of it.
-  b.add('interior', new PlaneGeometry(DOOR_W, DOOR_H).translate(d.doorX, PLINTH_H + DOOR_H / 2, d.wallFace + 0.006));
+  // A locked (or distant) doorway is a dark plane on the wall face; the leaf swings in front of it.
+  if (!open) b.add('interior', new PlaneGeometry(DOOR_W, DOOR_H).translate(d.doorX, PLINTH_H + DOOR_H / 2, d.wallFace + 0.006));
   if (lvl === 0) doorFrame(b, d, s);
-  for (const w of windowsFor(h, d)) {
-    const lit = r() < 0.45;
-    if (lvl === 2) continue;
-    windowAt(b, w, lvl, lit, s);
-  }
+  // Shelters are lit for the festival; the families at the pandal left theirs dark.
+  windowsFor(h, d).forEach((w, i) => {
+    if (lvl === 2) return;
+    // Ground-floor front and side windows of an open shelter are real openings.
+    const opening = open && w.y < PLINTH_H + STOREY_H && w.yaw !== Math.PI;
+    windowAt(b, w, lvl, lit[i], s, opening);
+  });
 
   // ---- veranda / balcony ------------------------------------------------------------------------
   if (h.storeys === 2) balcony(b, h, d, s, lvl);
   else veranda(b, d, s, lvl);
 
   // ---- roof -------------------------------------------------------------------------------------
-  if (h.roof === 'flat') flatRoof(b, d, s, lvl, r);
+  if (h.roof === 'flat') flatRoof(b, d, s, lvl, h);
   else {
     const rs = roofShape(h, d);
     const parts = pitchedRoof(h.roof === 'gable' ? 'gable' : 'hip', d.halfW, d.halfD, wallTop, d.roofRise, ROOF_OVERHANG, TILE.tile ?? 1.5);
@@ -142,6 +163,7 @@ function level(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, lvl: 0 | 1 | 
     }
   }
 
+  extra?.(b);
   return b.build(a.kit, { name: `house:${h.id}:lod${lvl}`, cast: lvl < 2 });
 }
 
@@ -199,12 +221,15 @@ function windowsFor(h: HouseDef, d: HouseDims): WindowSpot[] {
   return out;
 }
 
-/** A window facing +z, placed on a wall: frame, chhajja, grille, open shutters, sill. */
-function windowAt(b: Batch, w: WindowSpot, lvl: number, lit: boolean, s: Style): void {
+/**
+ * A window facing +z, placed on a wall: frame, chhajja, grille, open shutters, sill. `opening`: a
+ * real hole into the room (no painted pane).
+ */
+function windowAt(b: Batch, w: WindowSpot, lvl: number, lit: boolean, s: Style, opening = false): void {
   const m = place(w.x, w.y, w.z, w.yaw);
   const ww = 0.92;
   const wh = 1.06;
-  b.add(lit ? 'lamplit' : 'interior', new PlaneGeometry(ww, wh).translate(0, 0, 0.006), m);
+  if (!opening) b.add(lit ? 'lamplit' : 'interior', new PlaneGeometry(ww, wh).translate(0, 0, 0.006), m);
   if (lvl > 0) return;
   const teak = '#6a472d';
   for (const sx of [-1, 1]) b.add('teak', fill(box('teak', 0.08, wh + 0.16, 0.12, sx * (ww / 2 + 0.04), 0, 0.04), teak), m);
@@ -285,7 +310,7 @@ function balcony(b: Batch, h: HouseDef, d: HouseDims, s: Style, lvl: number): vo
   void h;
 }
 
-function flatRoof(b: Batch, d: HouseDims, s: Style, lvl: number, r: () => number): void {
+function flatRoof(b: Batch, d: HouseDims, s: Style, lvl: number, h: HouseDef): void {
   const y = d.eaveH;
   const W = d.halfW * 2;
   const D = d.halfD * 2;
@@ -302,7 +327,7 @@ function flatRoof(b: Batch, d: HouseDims, s: Style, lvl: number, r: () => number
   }
   if (lvl === 0) {
     // The black plastic water tank that tops half the roofs in rural India.
-    const tx = (r() < 0.5 ? -1 : 1) * (d.halfW - 1.1);
+    const tx = (hashId(h.id) % 2 ? -1 : 1) * (d.halfW - 1.1);
     const tz = -d.halfD + 1.1;
     b.add('paint', lathe([[0.001, 0], [0.55, 0], [0.56, 0.05], [0.56, 0.85], [0.5, 0.95], [0.18, 1.0], [0.18, 1.06], [0.001, 1.06]], 16).translate(tx, y + 0.3, tz), '#1d1d1d');
     b.add('stone', fill(box('stone', 1.2, 0.3, 1.2, tx, y + 0.15, tz), TONE.cement));
@@ -311,7 +336,7 @@ function flatRoof(b: Batch, d: HouseDims, s: Style, lvl: number, r: () => number
 
 /** The swinging door leaf (built at the hinge, opening toward −z into the house). */
 function doorLeaf(a: ArtContext, h: HouseDef, paint: Color): Group {
-  const b = new Batch();
+  const b = new Batch({ remap: { ...METALS, wood: ['paint', '#ffffff'] } });
   b.add('wood', fill(box('wood', DOOR_W, DOOR_H - 0.02, 0.05, DOOR_W / 2, DOOR_H / 2, 0.025), paint));
   for (const y of [0.35, 1.05, 1.75]) b.add('wood', fill(box('wood', DOOR_W - 0.1, 0.1, 0.025, DOOR_W / 2, y, 0.06), paint.clone().multiplyScalar(0.8)));
   for (const y of [0.35, 1.05, 1.75]) for (const x of [0.15, DOOR_W - 0.15]) b.add('brass', new IcosahedronGeometry(0.022, 0).translate(x, y, 0.08));
@@ -324,26 +349,32 @@ function doorLeaf(a: ArtContext, h: HouseDef, paint: Color): Group {
   return b.build(a.kit, { name: `door:${h.id}` });
 }
 
-/** Lamps, star lantern, diyas, rangoli, pots and a rope cot — the evening's life around a house. */
-function details(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, r: () => number, root: Group): Group {
-  const g = new Group();
-  const b = new Batch();
+/**
+ * Lamps, star lantern, diyas, rangoli, pots and a rope cot — the evening's life around a house —
+ * into the full-detail batch `b`; the decals go in `decals`, a shelter's room in `room`.
+ */
+function details(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, r: () => number, b: Batch, decals: Group, room: Group): void {
   const o = { x: h.x, z: h.z };
   const world = (lx: number, y: number, lz: number) => {
     const p = toWorld(o, h.rot, lx, lz);
     return new Vector3(p.x, y, p.z);
   };
 
-  // Wall lantern beside the door.
+  // Wall lantern beside the door: lit where the door is open to anyone tonight, dark where the
+  // family is out. The lamp by the doorway is how a shelter is recognised — no markers.
   const lx = d.doorX + DOOR_W / 2 + 0.55;
   const ly = PLINTH_H + 2.2;
   const lz = d.wallFace + 0.16;
   b.add('iron', new BoxGeometry(0.04, 0.04, 0.2).translate(lx, ly + 0.2, lz - 0.08));
   b.add('iron', new BoxGeometry(0.16, 0.03, 0.16).translate(lx, ly + 0.15, lz));
   b.add('iron', new BoxGeometry(0.14, 0.03, 0.14).translate(lx, ly - 0.14, lz));
-  b.add('lamplit', new BoxGeometry(0.11, 0.26, 0.11).translate(lx, ly, lz));
-  a.flames.add(world(lx, ly - 0.08, lz), 1.1);
-  a.lamps.anchor(world(lx, ly - 0.1, lz + 0.35), s.hut ? 1.4 : 2.1);
+  if (h.shelter) {
+    b.add('lamplit', new BoxGeometry(0.11, 0.26, 0.11).translate(lx, ly, lz));
+    a.flames.add(world(lx, ly - 0.08, lz), 1.1);
+    a.lamps.anchor(world(lx, ly - 0.1, lz + 0.35), s.hut ? 1.4 : 2.1);
+  } else {
+    b.add('paint', new BoxGeometry(0.11, 0.26, 0.11).translate(lx, ly, lz), '#3a3530');
+  }
 
   // Akash kandil: a paper star lantern hung from the veranda beam.
   if (!s.hut) {
@@ -390,7 +421,16 @@ function details(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, r: () => nu
     b.add('fabric', fill(boxUV(new BoxGeometry(1.8, 0.02, 0.8).translate(cx, top + 0.02, cz), 'fabric'), '#cdb27c'));
   }
 
-  const built = b.build(a.kit, { name: `house:${h.id}:details`, cast: false });
+  if (h.shelter) {
+    // A warm pool of lamplight on the veranda before an open door.
+    const pool = new Mesh(new PlaneGeometry(2.4, 1.8).rotateX(-Math.PI / 2), a.kit.decal('shelter-pool', glow(a.bank), { additive: true, opacity: 0.22 }));
+    (pool.material as MeshBasicMaterial).color.set('#ff9c45');
+    pool.position.set(d.doorX + 0.25, PLINTH_H + 0.03, d.wallFace + 0.85);
+    decals.add(pool);
+    // The room behind the door: no shadows of its own (the walls and roof cast the room's).
+    const furnished = furnishRoom(a, h, d, s, world);
+    room.add(furnished.batch.build(a.kit, { name: `house:${h.id}:room`, cast: false }), ...furnished.extras, ...moonbeams(a, h));
+  }
 
   // Rangoli at the foot of the steps (a decal: its own mesh, no shadows).
   const styles: RangoliStyle[] = ['flower', 'kolam', 'lotus'];
@@ -400,9 +440,7 @@ function details(a: ArtContext, h: HouseDef, d: HouseDims, s: Style, r: () => nu
   const rg = new Mesh(new PlaneGeometry(size, size).rotateX(-Math.PI / 2), a.kit.decal(`rangoli-${styleName}-${seed}`, rangoli(a.bank, styleName, seed)));
   rg.position.set(d.doorX, 0.015, d.verandaEdge + STEP_RUN * STEP_COUNT + 0.95);
   rg.receiveShadow = true;
-  g.add(built, rg);
-  void root;
-  return g;
+  decals.add(rg);
 }
 
 function hashId(id: string): number {

@@ -63,27 +63,19 @@ export function build(a: ArtContext): boolean {
   const hills = new CardSet();
 
   // ---- trees ------------------------------------------------------------------------------------
-  const stage: string[] = [];
-  const mark = (n: string) => stage.push(`${n}:${grove.leaves.count}/${grove.veg.count}/${grove.small.count}/${hills.count}`);
   for (const t of L.trees) buildTree(grove, t);
-  mark('trees');
   for (const lm of L.landmarks) if (lm.kind === 'banyan-platform') chabutra(a, merge, lm.x, lm.z);
 
   // ---- hedges, fields, garden, undergrowth ------------------------------------------------------
   plantHedges(grove.leaves, merge, L.fences, 501);
-  mark('hedges');
   const keepOut = L.landmarks.filter((l) => l.kind === 'scarecrow' || l.kind === 'haystack');
   sowFields(grove.veg, L, keepOut, 502);
-  mark('fields');
   const grass = grassiness(site, a.ground, noise2(503));
   const lush = (x: number, z: number) => a.ground?.surfaceAt(x, z).lush ?? 0.5;
   const beds = { leaves: grove.leaves, small: grove.small, site, layout: L, ground: a.ground, height, grass };
   garden(beds, 504);
-  mark('garden');
   undergrowth(beds, 505);
-  mark('under');
   if (a.ground) plantHills({ merge, leaves: hills, veg: grove.small }, a.ground, height, 506);
-  mark('hills');
 
   // ---- meshes ---------------------------------------------------------------------------------------
   a.root.add(merge.build('trees'));
@@ -94,20 +86,9 @@ export function build(a: ArtContext): boolean {
   const meadow = new Meadow(sowGrass(L, grass, lush, 507), grassMat, GRASS_REACH);
   a.root.add(meadow.mesh);
 
-  // PROBE (temporary): triangles per mesh.
-  const probe: string[] = [];
-  a.root.traverse((o) => {
-    const m = o as unknown as { isMesh?: boolean; geometry?: BufferGeometry; count?: number; name: string; isInstancedMesh?: boolean };
-    if (!m.isMesh || !m.name.startsWith('trees') || !m.geometry) return;
-    const tris = (m.geometry.index ? m.geometry.index.count : m.geometry.getAttribute('position').count) / 3;
-    probe.push(`${m.name}=${Math.round(tris * (m.isInstancedMesh ? (m.count ?? 1) : 1))}${m.isInstancedMesh ? `(${m.count}x${tris})` : ''}`);
-  });
-  console.log(`[probe] ${probe.join(' ')} | ${stage.join(' ')}`);
-  let probed = 0;
   a.tick.push((_dt, time, camera) => {
     wind.uTime.value = time;
     meadow.update(camera);
-    if (++probed === 30) console.log(`[probe] grass ${meadow.mesh.count}`);
   });
   return true;
 }

@@ -5,21 +5,23 @@ import type { PlayerConfig } from '../config/playerConfig';
 import type { AudioBank } from '../core/AudioBank';
 import type { Input } from '../core/Input';
 import type { Physics } from '../core/Physics';
-import { PlayerAnimation } from './PlayerAnimation';
+import type { InteractionActor } from '../interaction/IInteractable';
+import type { ShelterActor } from '../shelter/ShelterManager';
+import { type PlayerAction, PlayerAnimation } from './PlayerAnimation';
 import { PlayerAudio } from './PlayerAudio';
 import { PlayerController } from './PlayerController';
-import { type Interactable, type InteractionActor, PlayerInteraction } from './PlayerInteraction';
+import { buildProceduralClips } from './proceduralClips';
 import { PlayerState, PlayerStateId } from './PlayerState';
 
 /**
- * The playable devotee: model + controller + state + animation + interaction + audio.
- * Update order each frame: input → interaction → movement → animation → audio.
+ * The playable devotee: model + controller + state + animation + audio.
+ * Update order each frame: movement → animation → audio. Interaction is a separate system
+ * (interaction/InteractionSystem) that drives the player through InteractionActor.
  */
-export class Player implements InteractionActor, CameraTarget {
+export class Player implements InteractionActor, ShelterActor, CameraTarget {
   readonly state = new PlayerState();
   readonly controller: PlayerController;
   readonly animation: PlayerAnimation;
-  readonly interaction: PlayerInteraction;
   readonly audio: PlayerAudio;
   readonly root = new Group();
   private readonly unsubscribe: () => void;
@@ -36,7 +38,6 @@ export class Player implements InteractionActor, CameraTarget {
     input: Input,
     config: PlayerConfig,
     bank: AudioBank,
-    interactables: readonly Interactable[],
     spawn: Vector3,
     spawnYaw: number,
   ) {
@@ -50,11 +51,14 @@ export class Player implements InteractionActor, CameraTarget {
     scene.add(this.root);
 
     this.controller = new PlayerController(physics, config, this.state, spawn, spawnYaw);
-    this.animation = new PlayerAnimation(model, clips, config);
+    // devotee.glb carries no animation: make its clips from its skeleton (proceduralClips.ts).
+    const all = clips.length
+      ? clips
+      : buildProceduralClips(model, { slow: config.slowWalkSpeed, walk: config.walkSpeed, run: config.runSpeed, crouch: config.crouchSpeed });
+    this.animation = new PlayerAnimation(model, all, config);
     if (this.animation.missingClips.length) {
       console.warn(`[player] missing animation clips: ${this.animation.missingClips.join(', ')}`);
     }
-    this.interaction = new PlayerInteraction(interactables, config);
     this.audio = new PlayerAudio(
       bank,
       config,
@@ -114,20 +118,44 @@ export class Player implements InteractionActor, CameraTarget {
     this.root.visible = !this.hiddenIndoors && this.cameraFade > 0.02;
   }
 
-  update(dt: number, cameraYaw: number): void {
-    this.interaction.update(dt, this);
-    if (this.input.interactPressed) {
-      const action = this.interaction.tryBegin(this);
-      if (action) {
-        this.animation.play(
-          action,
-          () => this.interaction.midpoint(this),
-          () => this.interaction.complete(this),
-        );
-      }
-    }
-    if (this.interaction.active) this.controller.faceTowards(this.interaction.active.position, dt);
+  // ---- InteractionActor ------------------------------------------------------------------------
 
+  playAction(action: PlayerAction, onContact: () => void, onDone: () => void): void {
+    this.animation.play(action, onContact, onDone);
+  }
+
+  setBusy(busy: boolean): void {
+    if (busy) this.state.beginInteraction();
+    else this.state.endInteraction();
+  }
+
+  faceTowards(point: Vector3, dt: number): void {
+    this.controller.faceTowards(point, dt);
+  }
+
+  // ---- ShelterActor ----------------------------------------------------------------------------
+
+  walkTowards(x: number, z: number, speed: number): void {
+    this.controller.walkTowards(x, z, speed);
+  }
+
+  stopWalking(): void {
+    this.controller.stopWalking();
+  }
+
+  get walkRemaining(): number {
+    return this.controller.walkRemaining;
+  }
+
+  setScripted(on: boolean): void {
+    this.state.setScripted(on);
+  }
+
+  placeAt(point: Vector3, yaw: number): void {
+    this.controller.teleport(point, yaw);
+  }
+
+  update(dt: number, cameraYaw: number): void {
     this.controller.update(dt, this.input, cameraYaw);
     this.syncModel();
     this.animation.update(dt, this.controller.planarSpeed, this.controller.crouched);

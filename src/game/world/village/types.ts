@@ -1,3 +1,5 @@
+import type { ItemId } from '../../../shared/items';
+
 /**
  * The village as data. No Three.js, no physics — so the level can be validated in plain Node
  * (reachability, route choice, shelter coverage) before anything is drawn.
@@ -124,22 +126,31 @@ export interface AreaDef {
   open?: boolean;
 }
 
-/** Matches GAME_DESIGN.md §6 ItemId. */
-export type OfferingItem = 'modak' | 'durva' | 'hibiscus' | 'coconut' | 'diya' | 'kumkum' | 'banana-leaf' | 'marigold' | 'incense';
-
 /**
  * Level-design intent for an offering spot. Every tag is a *claim* that level.test.ts checks
  * against real path distances, so the layout cannot drift from the design without a red test.
  */
 export type OfferingTag = 'near-temple' | 'far-from-temple' | 'near-shelter' | 'risky';
 
+/** What the puja item sits on — the art rests it there, and nothing ever floats. */
+export type OfferingSurface = 'ground' | 'counter' | 'stall' | 'veranda';
+
+/**
+ * Where a puja item waits to be collected, and how many there are. The item kinds and what the
+ * puja needs of each live in shared/items.ts.
+ */
 export interface OfferingSpotDef {
   id: string;
-  item: OfferingItem;
+  item: ItemId;
+  /** How many this spot gives (a basket of three flowers, a hand of four bananas). */
+  quantity: number;
   x: number;
   z: number;
-  /** Surface height the prop sits on (stall, basket, ground). */
+  /** Surface height the item sits on (stall, counter, veranda, ground). */
   y: number;
+  surface: OfferingSurface;
+  /** Facing of the arrangement (radians, 0 = +z). */
+  rot: number;
   tags: OfferingTag[];
 }
 
@@ -190,6 +201,10 @@ export interface VillagerDef {
   grey?: boolean;
   /** Behind a counter or on a stage already blocked by something else: no collider of its own. */
   noCollider?: boolean;
+  /** Who they are, if you can talk to them ("Aajoba", "Ganpat-kaka"). */
+  name?: string;
+  /** What they say, in turn, each time you talk — mostly advice for the night. */
+  lines?: string[];
 }
 
 export interface FieldDef {

@@ -3,7 +3,7 @@
  * the same list builds the physics world in the game, the physics world in tests, and the
  * navigation grid the level tests walk.
  */
-import { houseDims, PLINTH_H, roofShape, shopDims, STEP_RISE, STEP_RUN, STEP_COUNT, STOREY_H, templeDims, toWorld } from './dims';
+import { DOOR_H, DOOR_W, houseDims, interiorDims, PLINTH_H, roofShape, shopDims, STEP_RISE, STEP_RUN, STEP_COUNT, STOREY_H, templeDims, toWorld, WALL_T } from './dims';
 import type { AreaDef, LandmarkDef, P2, TreeKind, VillageLayout } from './types';
 
 /** Which physics layer a solid lives on. 'none' = navigation-only (no collider). */
@@ -51,6 +51,7 @@ export type Solid = BoxSolid | CylSolid | HullSolid;
 export interface DoorPoint {
   houseId: string;
   family: string;
+  /** A shelter: its door opens and its front room can be walked into (see interiorDims). */
   shelter: boolean;
   /** Where the player stands to use the door. */
   x: number;
@@ -143,8 +144,30 @@ export function buildLevel(v: VillageLayout): Level {
     const d = houseDims(h);
     const o = { x: h.x, z: h.z };
     const tag = `house:${h.id}`;
-    // Walls (the whole block, plinth to eaves).
-    box(o, h.rot, 0, 0, d.eaveH / 2, d.halfW * 2, d.eaveH, d.halfD * 2, 'world', 'block', tag);
+    if (h.shelter) {
+      // A shell with a front room you can walk into: back block, side walls, a front wall with
+      // a doorway, floor, ceiling, and the door itself (enabled while it's shut).
+      const r = interiorDims(h);
+      const E = d.eaveH;
+      const W = d.halfW * 2;
+      const fz = (r.zFront + d.halfD) / 2;
+      const dl = d.doorX - DOOR_W / 2;
+      const dr = d.doorX + DOOR_W / 2;
+      box(o, h.rot, 0, (-d.halfD + r.zBack) / 2, E / 2, W, E, r.zBack + d.halfD, 'world', 'block', tag);
+      for (const sx of [-1, 1]) box(o, h.rot, sx * (d.halfW - WALL_T / 2), (r.zBack + r.zFront) / 2, E / 2, WALL_T, E, r.zFront - r.zBack, 'world', 'block', tag);
+      box(o, h.rot, (-d.halfW + dl) / 2, fz, E / 2, dl + d.halfW, E, WALL_T, 'world', 'block', tag);
+      box(o, h.rot, (dr + d.halfW) / 2, fz, E / 2, d.halfW - dr, E, WALL_T, 'world', 'block', tag);
+      box(o, h.rot, d.doorX, fz, (PLINTH_H + DOOR_H + E) / 2, DOOR_W, E - PLINTH_H - DOOR_H, WALL_T, 'world', 'block', tag);
+      box(o, h.rot, d.doorX, fz, PLINTH_H / 2, DOOR_W, PLINTH_H, WALL_T, 'world', 'ignore', `${tag}:sill`);
+      box(o, h.rot, (r.x0 + r.x1) / 2, (r.zBack + r.zFront) / 2, PLINTH_H / 2, r.x1 - r.x0, PLINTH_H, r.zFront - r.zBack, 'world', 'ignore', `${tag}:floor`);
+      box(o, h.rot, (r.x0 + r.x1) / 2, (r.zBack + r.zFront) / 2, (r.ceilingY + E) / 2, r.x1 - r.x0, E - r.ceilingY, r.zFront - r.zBack, 'world', 'ignore', `${tag}:ceiling`);
+      box(o, h.rot, d.doorX, fz, PLINTH_H + DOOR_H / 2, DOOR_W, DOOR_H, WALL_T, 'world', 'block', `${tag}:door`);
+      // The room is not part of the street network: outdoor navigation treats it as solid.
+      box(o, h.rot, (r.x0 + r.x1) / 2, (r.zBack + r.zFront) / 2, 1, r.x1 - r.x0, 2, r.zFront - r.zBack, 'none', 'block', `${tag}:interior`);
+    } else {
+      // Walls (the whole block, plinth to eaves).
+      box(o, h.rot, 0, 0, d.eaveH / 2, d.halfW * 2, d.eaveH, d.halfD * 2, 'world', 'block', tag);
+    }
     // Plinth and veranda: walkable, reached by the steps.
     platform(o, h.rot, 0, d.front + d.verandaDepth / 2, d.halfW * 2, d.verandaDepth, PLINTH_H, [[d.doorX - d.stepsWidth / 2, d.doorX + d.stepsWidth / 2]], `${tag}:veranda`);
     steps(o, h.rot, d.doorX, d.verandaEdge, d.stepsWidth, PLINTH_H, STEP_COUNT, `${tag}:steps`);

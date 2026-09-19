@@ -28,6 +28,8 @@ export class PlayerController {
   private readonly desired = new Vector3();
   private verticalSpeed = 0;
   private readonly turnVelocity = { value: 0 };
+  /** A scripted walk toward a point (doorways): overrides input until cleared. */
+  private script: { x: number; z: number; speed: number } | null = null;
   private readonly heightVelocity = { value: 0 };
 
   private readonly physics: Physics;
@@ -77,11 +79,22 @@ export class PlayerController {
     const mx = locked ? 0 : input.move.x;
     const my = locked ? 0 : input.move.y;
     // Camera forward is (sin yaw, 0, cos yaw); screen-right is (-cos yaw, 0, sin yaw).
-    const wishX = Math.sin(cameraYaw) * my - Math.cos(cameraYaw) * mx;
-    const wishZ = Math.cos(cameraYaw) * my + Math.sin(cameraYaw) * mx;
+    let wishX = Math.sin(cameraYaw) * my - Math.cos(cameraYaw) * mx;
+    let wishZ = Math.cos(cameraYaw) * my + Math.sin(cameraYaw) * mx;
     const magnitude = Math.min(Math.hypot(mx, my), 1);
 
-    const target = targetSpeed(c, { magnitude, run: input.run, slow: input.slow, crouched: this.crouched });
+    let target = targetSpeed(c, { magnitude, run: input.run, slow: input.slow, crouched: this.crouched });
+    let remaining = Infinity;
+    if (this.script) {
+      // Walk to the point, easing in over the last half metre; stand up first if crouched.
+      if (this.crouched && this.canStand()) this.crouched = false;
+      const dx = this.script.x - this.feet.x;
+      const dz = this.script.z - this.feet.z;
+      remaining = Math.hypot(dx, dz);
+      wishX = remaining > 1e-3 ? dx / remaining : 0;
+      wishZ = remaining > 1e-3 ? dz / remaining : 0;
+      target = remaining < 0.02 ? 0 : this.script.speed * Math.min(1, 0.35 + remaining / 0.5);
+    }
     const control = this.grounded ? 1 : c.airControl;
     this.planarSpeed = stepSpeed(this.planarSpeed, target, c.acceleration * control, c.deceleration * control, dt);
 
@@ -92,7 +105,9 @@ export class PlayerController {
     }
 
     this.verticalSpeed = this.grounded ? -1 : Math.max(this.verticalSpeed + c.gravity * dt, c.maxFallSpeed);
-    this.desired.copy(this.moveDir).multiplyScalar(this.planarSpeed * dt).addScaledVector(UP, this.verticalSpeed * dt);
+    // A scripted walk never overshoots its point.
+    const stride = Math.min(this.planarSpeed * dt, remaining);
+    this.desired.copy(this.moveDir).multiplyScalar(stride).addScaledVector(UP, this.verticalSpeed * dt);
 
     this.updateHeight(dt);
     this.kcc.computeColliderMovement(
@@ -125,6 +140,20 @@ export class PlayerController {
     if (dx * dx + dz * dz < 1e-4) return;
     this.yaw = smoothDampAngle(this.yaw, Math.atan2(dx, dz), this.turnVelocity, this.config.faceTargetTime, dt);
     this.moveDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+  }
+
+  /** Walk to (x, z) at `speed`, ignoring input, until `stopWalking`. Facing follows the path. */
+  walkTowards(x: number, z: number, speed: number): void {
+    this.script = { x, z, speed };
+  }
+
+  stopWalking(): void {
+    this.script = null;
+  }
+
+  /** Horizontal distance left on the scripted walk (0 when there is none). */
+  get walkRemaining(): number {
+    return this.script ? Math.hypot(this.script.x - this.feet.x, this.script.z - this.feet.z) : 0;
   }
 
   /** Instantly place the player (e.g. at a door). */

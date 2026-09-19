@@ -11,23 +11,30 @@ step inside a house and wait.
 | Document | What's in it |
 | --- | --- |
 | [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) | Gameplay loop, state machines, systems, data models, build order, risks, MVP scope |
-| [docs/LEVEL_DESIGN.md](docs/LEVEL_DESIGN.md) | The village map, areas, shelter rules, offering spots with measured distances |
+| [docs/SYSTEMS.md](docs/SYSTEMS.md) | How the run works: puja items, interaction, the bag, safe houses, the moon and purity |
+| [docs/LEVEL_DESIGN.md](docs/LEVEL_DESIGN.md) | The village map, areas, shelter rules, puja item spots with measured distances |
 | [docs/ART_BRIEF.md](docs/ART_BRIEF.md) | Visual direction, cultural guidance, the art toolkit, per-module specs |
 
 ## Status
 
-Third-person 3D (Three.js + Rapier). The whole village is playable from home to the temple:
-walk, run, slow walk, crouch; shelter in houses; offer prayers at the temple. The moon cycle,
-offerings inventory and scoring come next.
+Third-person 3D (Three.js + Rapier), playable start to finish: gather the seven puja items
+(flowers, durva, a coconut, bananas, rice, diyas, modaks) around the village — two bag-loads at
+least — and offer them at the temple, sheltering indoors whenever the clouds part and the
+Chaturthi moon shines. Ten houses can be walked into; the moon drains purity outdoors; a failure
+drops half the bag, never all of it. See [docs/SYSTEMS.md](docs/SYSTEMS.md).
 
-Animations come from Mixamo and are baked into the character by Blender — see
-`tools/blender/` below. Until they are added the devotee (and the villagers) hold his bind pose.
+The devotee's animations are made in code for his skeleton (`src/game/player/proceduralClips.ts`).
+Mixamo clips baked into the .glb by `tools/blender/` (below) take over automatically when present.
+
+Controls: WASD / left stick move · mouse / right stick look · Shift run · Ctrl slow walk ·
+C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
+On touch: left half moves, right half looks, pinch zooms; prompts and the bag are buttons.
 
 ## Commands
 
 ```bash
 npm run dev        # dev server, also exposed on the LAN for phone testing
-npm test           # vitest: camera, level design, physics playthroughs, movement
+npm test           # vitest: camera, level design, playthroughs, shelters, interaction, bag, moon
 npm run typecheck  # tsc -b, no emit
 npm run lint       # oxlint
 npm run build      # typecheck + production build
@@ -39,7 +46,8 @@ URL options (dev and prod): `?view=greybox` shows the village exactly as it coll
 those art modules (everything else greybox) for fast art iteration.
 
 In development, `window.__seva` offers `teleport(x, z, yawDeg)`, `look(yawDeg, pitchDeg)`,
-`walkTo(x, z, { run })` (an autopilot on the real controller) and `info()` (position, area,
+`walkTo(x, z, { run })` (an autopilot on the real controller), `moon(phase)`, `give(item, n)`,
+`interact()`, `enter(houseId)` / `leave()` and `info()` (position, area, safe, purity, bag,
 camera stats, draw calls). It is not included in production builds.
 
 ## Camera
@@ -81,21 +89,30 @@ tools/level/              level map and distance report generators
 public/assets/            runtime assets: models/, textures/ (CC0 ambientCG), audio/ (CC0 Kenney)
 src/
 ├── App.tsx               app-level state machine: menu ⇄ playing ⇄ paused
-├── ui/                   ── REACT LAYER ── MainMenu, GameCanvas, Hud, PauseOverlay
-├── shared/               ── THE CONTRACT ── typed events + EventBus (never imports the engine)
+├── ui/                   ── REACT LAYER ── MainMenu, GameCanvas, Hud, InteractionPrompt,
+│                         InventoryUI, PauseOverlay
+├── shared/               ── THE CONTRACT ── typed events, EventBus, the item catalogue
 └── game/                 ── 3D ENGINE ── (lazy-loaded)
     ├── index.ts          create/destroy the engine; the only entry point
-    ├── core/             Engine (renderer, loop), Input, Physics (Rapier, layers), devtools (dev only)
+    ├── Gameplay.ts       the run: bag, moon, purity, interaction, shelter, in frame order
+    ├── core/             Engine (renderer, loop), Input, Physics (Rapier, layers), AudioBank,
+    │                     devtools (dev only)
+    ├── audio/            SoundFx — the synthesised one-shots
+    ├── interaction/      IInteractable, InteractionSystem (+ tests)
+    ├── inventory/        InventorySystem, InventoryItem (+ tests)
+    ├── items/            PujaItem
+    ├── shelter/          SafeHouse, HouseInterior, ShelterManager (+ walk-in tests)
+    ├── moon/             MoonCycle, PuritySystem (+ tests)
     ├── config/           playerConfig.ts — every tunable player number
-    ├── camera/           ThirdPersonCamera, CameraConfig, cameraMath (+ tests)
-    ├── player/           Player, PlayerController, PlayerState, PlayerAnimation,
-    │                     PlayerInteraction, PlayerAudio, locomotion (pure maths + tests)
+    ├── camera/           ThirdPersonCamera (with interior shots), CameraConfig, cameraMath (+ tests)
+    ├── player/           Player, PlayerController, PlayerState, PlayerAnimation, proceduralClips,
+    │                     PlayerAudio, locomotion (pure maths + tests)
     └── world/
-        ├── environment.ts evening sky, sun, fog, image-based light
+        ├── environment.ts evening sky, sun, fog, image-based light — and the moon
         ├── Testbed.ts    the character test ground (?scene=testbed)
-        └── village/      layout, solids, navgrid, colliders, triggers, doors (+ level tests)
-            └── render/   greybox.ts, art/ (ground, houses, temple, trees, shops, props,
-                          festival, villagers)
+        └── village/      layout, solids, navgrid, colliders, triggers, interactables (+ level tests)
+            └── render/   greybox.ts, art/ (ground, houses + interiors, temple, trees, shops,
+                          props, festival, puja items, villagers)
 ```
 
 ## The three rules

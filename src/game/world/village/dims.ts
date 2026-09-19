@@ -182,3 +182,82 @@ export function templeDims(t: TempleDef): TempleDims {
     shikharaH: 9.5,
   };
 }
+
+// ---- Enterable houses ---------------------------------------------------------------------------
+
+/** Wall thickness of a house you can walk into (the solid ones are one block). */
+export const WALL_T = 0.3;
+
+export interface WindowOpening {
+  /** Which wall: 'front' faces local +z; 'left' is local −x, 'right' local +x. */
+  wall: 'front' | 'left' | 'right';
+  /** Centre along the wall (local x for the front, local z for the sides). */
+  along: number;
+  /** Centre height. */
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The front room of a shelter house: where you wait out the moonlight. It fills the house's width
+ * behind the front wall; the rest of the house (behind `zBack`) stays solid. Its windows are real
+ * openings — the moonlit street shows through them — and match the windows the art draws.
+ */
+export interface InteriorDims {
+  /** Inner faces of the side walls (local x). */
+  x0: number;
+  x1: number;
+  /** Local z of the back partition's face and of the front wall's inner face. */
+  zBack: number;
+  zFront: number;
+  floorY: number;
+  ceilingY: number;
+  windows: WindowOpening[];
+  /** Where you stand once inside, and where the inner exit prompt lives (local z; x is doorX). */
+  standZ: number;
+  exitZ: number;
+  /** The interior camera: a back corner, away from the door, looking at the door and windows. */
+  camera: { x: number; y: number; z: number };
+}
+
+export const WINDOW_W = 0.92;
+export const WINDOW_H = 1.06;
+/** Window centre height above the plinth. */
+export const WINDOW_Y = 0.95 + 0.52;
+
+export function interiorDims(h: HouseDef): InteriorDims {
+  const d = houseDims(h);
+  const hut = h.kind === 'hut';
+  const x0 = -d.halfW + WALL_T;
+  const x1 = d.halfW - WALL_T;
+  const zFront = d.halfD - WALL_T;
+  const zBack = hut ? -d.halfD + WALL_T : -0.9;
+  // Under a pitched roof the ceiling sits below the roof's eave line (its collider's underside).
+  const nominal = PLINTH_H + (hut ? 2.3 : h.storeys === 2 ? STOREY_H - 0.2 : STOREY_H - 0.15);
+  const ceilingY = h.roof === 'flat' || h.storeys === 2 ? nominal : Math.min(nominal, roofShape(h, d).ey - 0.05);
+  const y = PLINTH_H + WINDOW_Y;
+  const windows: WindowOpening[] = [];
+  if (!hut) {
+    for (const sx of [-1, 1]) {
+      const x = sx * d.halfW * 0.56;
+      if (Math.abs(x - d.doorX) > 1.35) windows.push({ wall: 'front', along: x, y, w: WINDOW_W, h: WINDOW_H });
+    }
+    windows.push({ wall: 'left', along: 0, y, w: WINDOW_W, h: WINDOW_H }, { wall: 'right', along: 0, y, w: WINDOW_W, h: WINDOW_H });
+  } else {
+    windows.push({ wall: 'right', along: 0, y, w: WINDOW_W, h: WINDOW_H });
+  }
+  const camX = d.doorX >= 0 ? x0 + 0.45 : x1 - 0.45;
+  return {
+    x0,
+    x1,
+    zBack,
+    zFront,
+    floorY: PLINTH_H,
+    ceilingY,
+    windows,
+    standZ: zFront - (hut ? 0.95 : 1.15),
+    exitZ: zFront - 0.5,
+    camera: { x: camX, y: Math.min(ceilingY - 0.45, PLINTH_H + 2.25), z: zBack + 0.4 },
+  };
+}

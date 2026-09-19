@@ -17,9 +17,11 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { EventBus } from '../../shared/EventBus';
+import { SoundFx } from '../audio/SoundFx';
 import { DEFAULT_CAMERA_CONFIG, validateCameraConfig } from '../camera/CameraConfig';
 import { type CameraUserSettings, ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { DEFAULT_PLAYER_CONFIG, validatePlayerConfig } from '../config/playerConfig';
+import { Gameplay } from '../Gameplay';
 import { Player } from '../player/Player';
 import { buildTestbed } from '../world/Testbed';
 import type { World } from '../world/World';
@@ -31,7 +33,8 @@ const BASE = import.meta.env.BASE_URL;
 
 /**
  * Owns the renderer, the loop and every system. Created on Play, disposed on quit.
- * Frame order: input → player (interaction, movement, animation, audio) → physics → camera → render.
+ * Frame order: input → gameplay (moon, interaction, shelter, purity) → player (movement,
+ * animation, audio) → physics → camera → world (triggers, sky, visuals) → render.
  */
 export class Engine {
   private readonly renderer: WebGLRenderer;
@@ -46,6 +49,7 @@ export class Engine {
   private world: World | null = null;
   private player: Player | null = null;
   private cameraRig: ThirdPersonCamera | null = null;
+  private gameplay: Gameplay | null = null;
   private paused = false;
   private pendingCameraSettings: CameraUserSettings | null = null;
   private disposed = false;
@@ -90,10 +94,13 @@ export class Engine {
     // ?scene=testbed → the character test ground; ?view=greybox → the village as it collides.
     const params = new URLSearchParams(location.search);
     const physics = this.physics;
+    const sounds = new SoundFx(this.bank);
+    const seed = Number(params.get('seed')) || Date.now() % 100000;
+    const gameplay = (this.gameplay = new Gameplay(physics, sounds, seed));
     const buildWorld = async (): Promise<World> => {
       if (params.get('scene') === 'testbed') return buildTestbed(this.scene, this.renderer, physics);
       const { buildVillage } = await import('../world/village/Village');
-      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art');
+      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services);
     };
     const [world, gltf] = await Promise.all([
       buildWorld(),
@@ -113,12 +120,15 @@ export class Engine {
       this.input,
       DEFAULT_PLAYER_CONFIG,
       this.bank,
-      world.interactables,
       world.spawn,
       world.spawnYaw,
     );
     this.cameraRig = new ThirdPersonCamera(this.camera, this.player, this.input, this.physics, DEFAULT_CAMERA_CONFIG);
     if (this.pendingCameraSettings) this.cameraRig.setUserSettings(this.pendingCameraSettings);
+    gameplay.start(world, this.player, this.cameraRig, this.camera);
+    void world.itemIcons?.then((icons) => {
+      if (!this.disposed) EventBus.emit('ui:item-icons', { icons });
+    });
 
     const size = this.renderer.getSize(new Vector2());
     // Render into a multisampled target: without it, post-processing silently drops the
@@ -161,6 +171,7 @@ export class Engine {
     for (const u of this.unsubscribers) u();
     this.resizeObserver.disconnect();
     this.input.dispose();
+    this.gameplay?.dispose();
     this.player?.dispose();
     this.world?.dispose();
     this.physics?.dispose();
@@ -175,14 +186,21 @@ export class Engine {
     this.renderer.info.reset();
     this.timer.update();
     const dt = Math.min(this.timer.getDelta(), 1 / 20);
-    if (!this.player || !this.cameraRig || !this.physics || !this.composer) return;
+    if (!this.player || !this.cameraRig || !this.physics || !this.composer || !this.gameplay) return;
     if (!this.paused) {
       this.input.update();
-      this.player.update(dt, this.cameraRig.yaw);
+      // While the bag is open, the stick and arrows browse it instead of walking.
+      if (this.gameplay.inventoryOpen) {
+        this.input.move.set(0, 0);
+        this.input.crouchPressed = false;
+      }
+      this.gameplay.update(dt, this.input.interactPressed);
+      // Movement is relative to what the player sees — the follow rig, or an interior's camera.
+      this.player.update(dt, this.cameraRig.viewYaw);
       this.physics.step(dt);
       this.cameraRig.update(dt);
       this.world?.follow(this.player.feet);
-      this.world?.update?.(dt, this.player.feet, this.camera);
+      this.world?.update?.(dt, this.player.feet, { camera: this.camera, moonlight: this.gameplay.moonlight });
       this.input.endFrame();
     }
     this.composer.render();
@@ -199,6 +217,7 @@ export class Engine {
       player: this.player as Player,
       cameraRig: this.cameraRig as ThirdPersonCamera,
       world: this.world as World,
+      gameplay: this.gameplay as Gameplay,
     };
   }
 

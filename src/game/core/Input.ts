@@ -1,5 +1,6 @@
 import { Vector2 } from 'three';
 import { EventBus } from '../../shared/EventBus';
+import type { InputDevice } from '../../shared/events';
 
 /**
  * One input model over keyboard + mouse (pointer lock), gamepad and touch.
@@ -31,6 +32,8 @@ export class Input {
   interactPressed = false;
   pointerLocked = false;
   touchLook = false;
+  /** The device the player used last — prompts show its button. */
+  device: InputDevice = 'keyboard';
 
   private readonly keys = new Set<string>();
   private readonly pendingLook = new Vector2();
@@ -54,12 +57,16 @@ export class Input {
   ) {
     this.canvas = canvas;
     // On a phone every look is a touch look; let the camera treat it as such from the first frame.
-    if (matchMedia('(pointer: coarse)').matches) this.lookSource = 'touch';
+    if (matchMedia('(pointer: coarse)').matches) {
+      this.lookSource = 'touch';
+      this.device = 'touch';
+    }
     this.listen(window, 'keydown', (e) => this.onKey(e as KeyboardEvent, true));
     this.listen(window, 'keyup', (e) => this.onKey(e as KeyboardEvent, false));
     this.listen(window, 'blur', () => this.keys.clear());
     this.listen(document, 'mousemove', (e) => {
       if (!this.pointerLocked) return;
+      this.setDevice('keyboard');
       const m = e as MouseEvent;
       this.pendingLook.x += m.movementX;
       this.pendingLook.y += m.movementY;
@@ -89,7 +96,7 @@ export class Input {
     this.cleanups.push(
       EventBus.on('input:action', ({ action }) => {
         if (action === 'interact') this.interactPressed = true;
-        else this.crouchPressed = true;
+        else if (action === 'crouch') this.crouchPressed = true;
       }),
     );
   }
@@ -143,6 +150,7 @@ export class Input {
   private onKey(e: KeyboardEvent, down: boolean): void {
     if (e.repeat) return;
     if (down) {
+      this.setDevice('keyboard');
       this.keys.add(e.code);
       if (e.code === 'KeyC') this.crouchPressed = true;
       if (e.code === 'KeyE') this.interactPressed = true;
@@ -165,6 +173,8 @@ export class Input {
     if (this.lookStick.x !== 0 || this.lookStick.y !== 0) this.lookSource = 'stick';
     const pressed = pad.buttons.map((b) => b.pressed);
     const edge = (i: number) => pressed[i] && !this.padButtons[i];
+    if (lx !== 0 || ly !== 0 || this.lookStick.x !== 0 || this.lookStick.y !== 0 || pressed.some((p, i) => p && !this.padButtons[i])) this.setDevice('gamepad');
+    if (edge(3)) EventBus.emit('ui:inventory-toggle'); // Y / Triangle
     if (edge(0)) this.interactPressed = true; // A / Cross
     if (edge(1)) this.crouchPressed = true; // B / Circle
     if (pressed[10]) this.run = true; // L3
@@ -174,9 +184,16 @@ export class Input {
     this.padButtons = pressed;
   }
 
+  private setDevice(d: InputDevice): void {
+    if (d === this.device) return;
+    this.device = d;
+    EventBus.emit('ui:input-device', { device: d });
+  }
+
   // Left half of the screen: floating joystick. Right half: drag to look.
   private onTouchStart(e: TouchEvent): void {
     e.preventDefault();
+    this.setDevice('touch');
     for (const t of Array.from(e.changedTouches)) {
       const leftHalf = t.clientX < window.innerWidth / 2;
       if (leftHalf && this.moveTouchId === null) {

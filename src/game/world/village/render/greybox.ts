@@ -4,7 +4,7 @@
  * the same data, so moving a house in layout.ts moves it in both.
  *
  * Colour key: warm grey = shelter house · dark grey = locked house · cream = home ·
- * terracotta = roofs · sand = temple · red/gold diamonds = risky / safe offering spots.
+ * terracotta = roofs · sand = temple · puja items in their own colours, on a red (risky) or gold ring.
  */
 import {
   BoxGeometry,
@@ -17,7 +17,6 @@ import {
   IcosahedronGeometry,
   Mesh,
   MeshStandardMaterial,
-  OctahedronGeometry,
   PlaneGeometry,
   RepeatWrapping,
   SRGBColorSpace,
@@ -28,7 +27,20 @@ import { DOOR_H, DOOR_W, houseDims, PLINTH_H, toWorld } from '../dims';
 import type { Solid } from '../solids';
 import type { TreeKind } from '../types';
 import { hash, mergeBaked, ribbon, tint } from './common';
-import type { VillageVisuals, VisualsContext } from './types';
+import type { ItemId } from '../../../../shared/items';
+import { ITEM_HEIGHT, type PujaItemVisual } from '../../../items/PujaItem';
+import type { DropVisual, VillageVisuals, VisualsContext } from './types';
+
+/** Greybox colour per puja item. */
+const ITEM_COLOUR: Record<ItemId, string> = {
+  flowers: '#f09a1c',
+  durva: '#5f9a3a',
+  coconut: '#6b4a2c',
+  bananas: '#e2c04a',
+  rice: '#efe9da',
+  diya: '#b0643f',
+  modak: '#f3e3c3',
+};
 
 const C = {
   shelter: '#d8d2c4',
@@ -108,6 +120,8 @@ export async function buildGreybox(ctx: VisualsContext, opts: GreyboxOptions = {
     const [kind, id, part = ''] = s.tag.split(':');
     if (s.tag.includes(':rim') || kind === 'edge') return null;
     if (kind === 'house') {
+      if (part === 'door') return null; // the swinging leaf below stands in for it
+      if (part === 'floor' || part === 'sill') return C.plinth;
       if (part.startsWith('roof') || part === 'veranda-roof' || part === 'parapet') return C.roof;
       if (part === 'post') return C.post;
       if (part === 'veranda' || part === 'steps') return part === 'steps' && s.tag.endsWith(':ramp') ? null : C.plinth;
@@ -166,8 +180,10 @@ export async function buildGreybox(ctx: VisualsContext, opts: GreyboxOptions = {
     const house = new Group();
     house.position.set(h.x, 0, h.z);
     house.rotation.y = h.rot;
+    // Shelters have a real doorway; the others a dark one painted on the wall.
     const hole = new Mesh(holeGeo, darkMat);
     hole.position.set(d.doorX, PLINTH_H, d.wallFace + 0.005);
+    hole.visible = !h.shelter;
     const hinge = new Group();
     hinge.position.set(d.doorX - DOOR_W / 2, PLINTH_H, d.wallFace + 0.05);
     const leaf = new Mesh(leafGeo, doorMat);
@@ -178,18 +194,35 @@ export async function buildGreybox(ctx: VisualsContext, opts: GreyboxOptions = {
     doorHinges.set(h.id, hinge);
   }
 
-  // ---- Offering markers: gold where it's safe, red where the moon would catch you -------------
-  const markerGeo = new OctahedronGeometry(0.22);
-  const safeMat = new MeshStandardMaterial({ color: '#ffd24a', emissive: new Color('#ffb000'), emissiveIntensity: 1.2 });
-  const riskyMat = new MeshStandardMaterial({ color: '#ff6a3a', emissive: new Color('#ff3a10'), emissiveIntensity: 1.2 });
-  disposables.push(markerGeo, safeMat, riskyMat);
-  const markers: Mesh[] = [];
+  // ---- Puja items: a stand-in the size of each arrangement, resting on its surface, coloured
+  // by kind; glowing as you approach. (Red ring = risky spot, gold ring = safe.) ------------------
+  const itemVisuals = new Map<string, PujaItemVisual>();
+  const ringGeo = new CylinderGeometry(0.34, 0.34, 0.012, 24);
+  disposables.push(ringGeo);
   for (const o of opts.structuresOnly ? [] : layout.offerings) {
-    const m = new Mesh(markerGeo, o.tags.includes('risky') ? riskyMat : safeMat);
-    m.position.set(o.x, o.y + 0.9, o.z);
-    m.userData.baseY = m.position.y;
-    root.add(m);
-    markers.push(m);
+    const h = ITEM_HEIGHT[o.item];
+    const mat = new MeshStandardMaterial({ color: ITEM_COLOUR[o.item], roughness: 0.7, emissive: new Color(ITEM_COLOUR[o.item]), emissiveIntensity: 0 });
+    const ringMat = new MeshStandardMaterial({ color: o.tags.includes('risky') ? '#ff6a3a' : '#ffd24a', emissive: new Color(o.tags.includes('risky') ? '#ff3a10' : '#ffb000'), emissiveIntensity: 0.6 });
+    const geo = new CylinderGeometry(0.2, 0.22, h, 16).translate(0, h / 2, 0);
+    disposables.push(mat, ringMat, geo);
+    const m = new Mesh(geo, mat);
+    const ring = new Mesh(ringGeo, ringMat);
+    ring.position.y = 0.007;
+    const g = new Group();
+    g.add(m, ring);
+    g.position.set(o.x, o.y, o.z);
+    m.castShadow = true;
+    root.add(g);
+    itemVisuals.set(o.id, {
+      setHighlight: (approach, focused) => {
+        mat.emissiveIntensity = (focused ? 0.6 : 0.25) * approach;
+      },
+      setRemaining: (left, total) => {
+        g.visible = left > 0;
+        m.scale.y = 0.4 + 0.6 * (left / Math.max(total, 1));
+      },
+      update: () => {},
+    });
   }
 
   // The temple offering point.
@@ -202,12 +235,25 @@ export async function buildGreybox(ctx: VisualsContext, opts: GreyboxOptions = {
 
   return {
     doorHinges,
-    update(_dt, frame) {
-      for (const [i, m] of markers.entries()) {
-        m.position.y = (m.userData.baseY as number) + Math.sin(frame.time * 2 + i) * 0.08;
-        m.rotation.y = frame.time + i;
-      }
+    itemVisuals,
+    makeDropVisual(at: Vector3): DropVisual {
+      const m = new Mesh(new CylinderGeometry(0.22, 0.26, 0.24, 12).translate(0, 0.12, 0), new MeshStandardMaterial({ color: '#b5462c', roughness: 0.8 }));
+      m.position.copy(at);
+      root.add(m);
+      return {
+        setHighlight: () => {},
+        setRemaining: (left) => {
+          m.visible = left > 0;
+        },
+        update: () => {},
+        dispose: () => {
+          m.removeFromParent();
+          m.geometry.dispose();
+          (m.material as MeshStandardMaterial).dispose();
+        },
+      };
     },
+    update() {},
     dispose() {
       scene.remove(root);
       for (const d of disposables) d.dispose();

@@ -1,5 +1,5 @@
 import type { Collider } from '@dimforge/rapier3d-compat';
-import { type PerspectiveCamera, Vector3 } from 'three';
+import { type PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { CAMERA_QUERY, type Physics } from '../core/Physics';
 import { smoothDamp, smoothDampAngle } from '../player/locomotion';
 import type { CameraConfig } from './CameraConfig';
@@ -41,6 +41,16 @@ export interface CameraInput {
   readonly padZoom: number;
   readonly lookSource: 'mouse' | 'touch' | 'stick' | null;
   readonly recenterPressed: boolean;
+}
+
+/**
+ * A fixed camera placement the rig hands over to — a house interior. The camera sits at
+ * `position` and keeps the player framed (feet + `lookHeight`).
+ */
+export interface CameraShot {
+  position: Vector3;
+  lookHeight: number;
+  fov: number;
 }
 
 export interface CameraUserSettings {
@@ -104,6 +114,22 @@ export class ThirdPersonCamera {
   private readonly dir = new Vector3();
   private readonly aim = new Vector3();
 
+  // Shots (interiors): the rig keeps running underneath; the camera blends between the two along
+  // a path (rig → via… → shot), so a hand-over through a doorway never cuts through the wall.
+  private shot: CameraShot | null = null;
+  private shotWeight = 0;
+  private shotTarget = 0;
+  private shotBlendTime = 1;
+  private shotVia: Vector3[] = [];
+  private readonly shotLook = new Vector3();
+  private readonly shotLookVel = { x: { value: 0 }, y: { value: 0 }, z: { value: 0 } };
+  private readonly rigPos = new Vector3();
+  private readonly rigQuat = new Quaternion();
+  private rigFov = 55;
+  private readonly shotQuat = new Quaternion();
+  private readonly path: Vector3[] = [];
+  private readonly viewDir = new Vector3();
+
   private readonly camera: PerspectiveCamera;
   private readonly target: CameraTarget;
   private readonly input: CameraInput;
@@ -145,6 +171,33 @@ export class ThirdPersonCamera {
     }
   }
 
+  /**
+   * Hand the view to a fixed shot (or back to the rig with `null`), blending over `seconds` along
+   * rig → `via` → shot. The via points must form a clear path (a doorway's axis).
+   */
+  setShot(shot: CameraShot | null, seconds: number, via: readonly Vector3[] = []): void {
+    if (shot) {
+      this.shot = shot;
+      this.shotLook.set(this.target.feet.x, this.target.feet.y + shot.lookHeight, this.target.feet.z);
+      for (const v of Object.values(this.shotLookVel)) v.value = 0;
+    }
+    this.shotTarget = shot ? 1 : 0;
+    this.shotBlendTime = Math.max(seconds, 1e-3);
+    this.shotVia = via.map((v) => v.clone());
+  }
+
+  /** 0 = following, 1 = in a shot; in between while blending. */
+  get shotBlend(): number {
+    return this.shotWeight;
+  }
+
+  /** The heading the player actually sees along — movement is relative to this. */
+  get viewYaw(): number {
+    if (this.shotWeight <= 0) return this.yaw;
+    this.camera.getWorldDirection(this.viewDir);
+    return Math.atan2(this.viewDir.x, this.viewDir.z);
+  }
+
   /** Place the camera without any smoothing — spawn, teleport, respawn. */
   snap(): void {
     this.follow.copy(this.target.feet);
@@ -165,6 +218,61 @@ export class ThirdPersonCamera {
     this.blendGait(dt);
     this.followTarget(dt);
     this.place(dt);
+    this.applyShot(dt);
+  }
+
+  // ---- shots -----------------------------------------------------------------------------------
+
+  private applyShot(dt: number): void {
+    const step = dt / this.shotBlendTime;
+    this.shotWeight = this.shotTarget > this.shotWeight ? Math.min(this.shotWeight + step, 1) : Math.max(this.shotWeight - step, 0);
+    if (this.shotWeight <= 0) {
+      if (this.shotTarget === 0) this.shot = null;
+      return;
+    }
+    const shot = this.shot;
+    if (!shot) return;
+    const w = this.shotWeight * this.shotWeight * (3 - 2 * this.shotWeight);
+
+    // The rig's pose, as place() left it.
+    this.rigPos.copy(this.camera.position);
+    this.rigQuat.copy(this.camera.quaternion);
+    this.rigFov = this.camera.fov;
+
+    // The shot's pose: fixed position, eyes on the player (lightly damped so steps don't jitter).
+    const f = this.target.feet;
+    const v = this.shotLookVel;
+    this.shotLook.x = smoothDamp(this.shotLook.x, f.x, v.x, 0.25, dt);
+    this.shotLook.y = smoothDamp(this.shotLook.y, f.y + shot.lookHeight, v.y, 0.25, dt);
+    this.shotLook.z = smoothDamp(this.shotLook.z, f.z, v.z, 0.25, dt);
+    this.camera.position.copy(shot.position);
+    this.camera.lookAt(this.shotLook);
+    this.shotQuat.copy(this.camera.quaternion);
+
+    // Along the path by arc length, so the doorway is crossed at an even pace.
+    this.path.length = 0;
+    this.path.push(this.rigPos, ...this.shotVia, shot.position);
+    this.pointAlong(this.path, w, this.camera.position);
+    this.camera.quaternion.copy(this.rigQuat).slerp(this.shotQuat, w);
+    this.camera.fov = this.rigFov + (shot.fov - this.rigFov) * w;
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+    this.target.setCameraFade(playerFade(this.config, this.camera.position.distanceTo(this.pivot)));
+  }
+
+  private pointAlong(pts: readonly Vector3[], t: number, out: Vector3): void {
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) total += pts[i].distanceTo(pts[i - 1]);
+    let d = t * total;
+    for (let i = 1; i < pts.length; i++) {
+      const seg = pts[i].distanceTo(pts[i - 1]);
+      if (d <= seg || i === pts.length - 1) {
+        out.lerpVectors(pts[i - 1], pts[i], seg > 1e-6 ? Math.min(d / seg, 1) : 1);
+        return;
+      }
+      d -= seg;
+    }
+    out.copy(pts[pts.length - 1]);
   }
 
   // ---- 1–2. rotation and recentering ---------------------------------------------------------

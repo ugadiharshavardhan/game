@@ -11,6 +11,7 @@ import { buildGreybox } from '../greybox';
 import type { VillageVisuals, VisualsContext } from '../types';
 import { buildGround } from './ground';
 import { buildHouses } from './houses';
+import { buildPujaItems } from './pujaItems';
 import { MaterialKit, PBR_SETS } from './materials';
 import { type ArtContext, type ArtModule, Culler, FlameField, LampPool } from './runtime';
 import { TextureBank } from './textures';
@@ -68,7 +69,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     lamps: new LampPool(root, 6),
     culler: new Culler(),
     ground: null,
-    shared: { templeGlow: 0 },
+    shared: { templeGlow: 0, moonlight: 0 },
     tick: [],
   };
 
@@ -84,6 +85,8 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     doorHinges = buildHouses(a, ctx.layout.houses);
     covered.push('houses');
   }
+  // The puja items are gameplay: always drawn, whatever ?only= says.
+  const items = buildPujaItems(a);
   for (const [name, load] of Object.entries(MODULES)) {
     if (!on(name)) continue;
     const { build } = await load();
@@ -104,9 +107,13 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
   const camPos = new Vector3();
   return {
     doorHinges,
+    itemVisuals: items.visuals,
+    makeDropVisual: items.makeDropVisual,
+    itemIcons: items.icons,
     update(dt, frame) {
       frame.camera.getWorldPosition(camPos);
       a.shared.templeGlow = frame.templeGlow;
+      a.shared.moonlight = frame.moonlight;
       const flicker = 0.9 + 0.07 * Math.sin(frame.time * 9.3) + 0.04 * Math.sin(frame.time * 23.1);
       a.flames.update(frame.time);
       a.lamps.update(dt, camPos, flicker);

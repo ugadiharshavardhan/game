@@ -5,6 +5,7 @@
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 import { describe, it } from 'vitest';
+import { ITEMS } from '../../src/shared/items';
 import { VILLAGE } from '../../src/game/world/village/layout';
 import { buildNavGrid, distanceField, nearestFree } from '../../src/game/world/village/navgrid';
 import { LEVEL_RULES } from '../../src/game/world/village/rules';
@@ -103,7 +104,7 @@ describe.skipIf(!REPORT)('level report', () => {
     const rows = VILLAGE.offerings.map((o) => {
       const i = at(o.x, o.z);
       const best = shelters.reduce((b, s) => (s.f[i] < b.f[i] ? s : b));
-      return `| ${o.id} | ${o.item} | ${area(o.x, o.z)} | ${o.tags.join(', ') || '—'} | ${temple[i].toFixed(0)} m | ${best.f[i].toFixed(0)} m (${best.d.family}) |`;
+      return `| ${o.id} | ${ITEMS[o.item].name} ×${o.quantity} | ${area(o.x, o.z)} | ${o.tags.join(', ') || '—'} | ${temple[i].toFixed(0)} m | ${best.f[i].toFixed(0)} m (${best.d.family}) |`;
     });
     const home = temple[at(level.spawn.x, level.spawn.z)];
     writeFileSync(
@@ -111,7 +112,7 @@ describe.skipIf(!REPORT)('level report', () => {
       [
         `Home → temple: **${home.toFixed(0)} m** on foot.`,
         '',
-        '| Spot | Offering | Area | Design tags | Walk to temple | Walk to nearest shelter |',
+        '| Spot | Puja item | Area | Design tags | Walk to temple | Walk to nearest shelter |',
         '| --- | --- | --- | --- | --- | --- |',
         ...rows,
         '',

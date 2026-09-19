@@ -30,8 +30,8 @@ export interface ArtContext extends VisualsContext {
   culler: Culler;
   /** The terrain (null when built with ?only= without 'ground'): heights and surface weights. */
   ground: Ground | null;
-  /** Live state shared with modules: 0..1 glow after a prayer at the temple. */
-  shared: { templeGlow: number };
+  /** Live state shared with modules: glow after an offering, and how much moonlight is falling. */
+  shared: { templeGlow: number; moonlight: number };
   /** Per-frame hooks (swaying cloth, flickering signs). */
   tick: Array<(dt: number, time: number, camera: Vector3) => void>;
 }

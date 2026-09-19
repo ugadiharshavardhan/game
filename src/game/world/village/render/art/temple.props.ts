@@ -14,8 +14,8 @@ import { type MatBatch, turned } from './temple.geom';
 export type Lit = (p: Vector3, size?: number) => void;
 
 /** Deccan basalt and the oil-darkened stone of a sanctum. */
-export const BASALT = '#7b7169';
-export const BASALT_DARK = '#58504a';
+export const BASALT = '#bdb1a5';
+export const BASALT_DARK = '#948980';
 
 // ---- Small things ---------------------------------------------------------------------------------
 

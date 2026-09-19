@@ -195,19 +195,28 @@ export const VILLAGE: VillageLayout = {
     { id: 'pond', kind: 'pond', name: 'Village Tank', x: -22, z: -30, w: 13, d: 10, open: true },
   ],
 
+  // The puja items, where they'd naturally be: flowers in gardens and at the flower stall, durva on
+  // the grassy banks and field edges, coconuts under palms and at the puja stall, bananas at the fruit
+  // stall and the grove, rice at the kirana, diyas at the potter's and on doorsteps, modaks at the
+  // sweet shop. Tags are measured claims (level.test.ts): near/far from the temple, near a shelter
+  // or out on risky open ground.
   offerings: [
-    { id: 'modak', item: 'modak', x: -5.3, z: -29.2, y: 0.95, tags: ['near-temple', 'near-shelter'] },
-    { id: 'incense', item: 'incense', x: -4.6, z: -35.6, y: 0.85, tags: ['near-temple'] },
-    { id: 'durva-tank', item: 'durva', x: -22, z: -35.2, y: 0, tags: ['near-temple', 'risky'] },
-    { id: 'marigold', item: 'marigold', x: -6, z: 0.4, y: 0.8, tags: ['risky'] },
-    { id: 'diya', item: 'diya', x: 5.5, z: 11.2, y: 0.05, tags: ['risky'] },
-    { id: 'hibiscus', item: 'hibiscus', x: -35, z: -21, y: 0.6, tags: ['near-shelter'] },
-    { id: 'banana-leaf', item: 'banana-leaf', x: 25, z: -26.2, y: 0, tags: ['near-shelter'] },
-    { id: 'mango-orchard', item: 'coconut', x: 53, z: -24, y: 0, tags: ['risky'] },
-    { id: 'kumkum', item: 'kumkum', x: -5.4, z: 31, y: 0.95, tags: ['far-from-temple', 'near-shelter'] },
-    { id: 'coconut-home', item: 'coconut', x: 6, z: 46, y: 0, tags: ['far-from-temple', 'near-shelter'] },
-    { id: 'durva-field', item: 'durva', x: -56.5, z: 21.5, y: 0, tags: ['far-from-temple', 'risky'] },
-    { id: 'coconut-grove', item: 'coconut', x: 56, z: 28, y: 0, tags: ['far-from-temple', 'risky'] },
+    { id: 'flowers-garden', item: 'flowers', quantity: 3, x: -36, z: -25.5, y: 0, surface: 'ground', rot: WEST, tags: ['near-shelter'] },
+    { id: 'flowers-stall', item: 'flowers', quantity: 3, x: -5.4, z: -1.25, y: 0.8, surface: 'stall', rot: SOUTH, tags: ['risky'] },
+    { id: 'flowers-home', item: 'flowers', quantity: 2, x: -5.6, z: 45.8, y: 0, surface: 'ground', rot: NORTH, tags: ['far-from-temple', 'near-shelter'] },
+    { id: 'durva-tank', item: 'durva', quantity: 1, x: -22, z: -35.2, y: 0, surface: 'ground', rot: SOUTH, tags: ['near-temple', 'risky'] },
+    { id: 'durva-field', item: 'durva', quantity: 2, x: -56.5, z: 21.5, y: 0, surface: 'ground', rot: EAST, tags: ['far-from-temple', 'risky'] },
+    { id: 'durva-veg', item: 'durva', quantity: 1, x: -30.5, z: 45.5, y: 0, surface: 'ground', rot: NORTH, tags: ['far-from-temple', 'risky'] },
+    { id: 'coconut-grove', item: 'coconut', quantity: 1, x: 56, z: 28, y: 0, surface: 'ground', rot: WEST, tags: ['far-from-temple', 'risky'] },
+    { id: 'coconut-home', item: 'coconut', quantity: 1, x: 6, z: 46, y: 0, surface: 'ground', rot: NORTH, tags: ['far-from-temple', 'near-shelter'] },
+    { id: 'coconut-stall', item: 'coconut', quantity: 1, x: -5.8, z: -35.2, y: 0.85, surface: 'stall', rot: EAST, tags: ['near-temple'] },
+    { id: 'bananas-stall', item: 'bananas', quantity: 4, x: 37.6, z: -13.6, y: 0.9, surface: 'stall', rot: SOUTH, tags: ['risky'] },
+    { id: 'bananas-grove', item: 'bananas', quantity: 2, x: 25, z: -26.2, y: 0, surface: 'ground', rot: SOUTH, tags: ['near-shelter'] },
+    { id: 'rice-kirana', item: 'rice', quantity: 3, x: -6.15, z: 31, y: 0.92, surface: 'counter', rot: EAST, tags: ['far-from-temple', 'near-shelter'] },
+    { id: 'modak-sweets', item: 'modak', quantity: 6, x: -6.15, z: -29.2, y: 0.92, surface: 'counter', rot: EAST, tags: ['near-temple', 'near-shelter'] },
+    { id: 'diya-potter', item: 'diya', quantity: 3, x: 5.5, z: 11.6, y: 0, surface: 'ground', rot: SOUTH, tags: ['risky'] },
+    { id: 'diya-jadhav', item: 'diya', quantity: 2, x: 27.7, z: 20.0, y: 0, surface: 'ground', rot: SOUTH, tags: ['far-from-temple', 'near-shelter'] },
+    { id: 'diya-gokhale', item: 'diya', quantity: 2, x: -7.0, z: -17.3, y: 0, surface: 'ground', rot: EAST, tags: ['near-temple', 'near-shelter'] },
   ],
 
   landmarks: [
@@ -240,14 +249,14 @@ export const VILLAGE: VillageLayout = {
   // People preparing for the puja. Where they stand in the open they have a collider (solids.ts).
   villagers: [
     { id: 'pandal-garland', task: 'hanging a marigold garland over the stage', pose: 'arms-up', x: 13.8, z: 6.2, y: 0.7, rot: WEST, outfit: 1, scale: 1.06, noCollider: true },
-    { id: 'pandal-helper', task: 'handing up the next garland', pose: 'hold-up', x: 11.9, z: 3.4, y: 0, rot: EAST, outfit: 3, scale: 1.0 },
-    { id: 'rangoli-boy', task: 'finishing the rangoli on the festival ground', pose: 'kneel', x: 3.1, z: 4.5, y: 0, rot: WEST, outfit: 2, scale: 0.9 },
-    { id: 'mithai-seller', task: 'arranging modak on the trays', pose: 'stand', x: -7.35, z: -30.3, y: 0, rot: EAST, outfit: 4, scale: 1.08, noCollider: true },
-    { id: 'kirana-keeper', task: 'minding the kirana from his stool', pose: 'sit-stool', x: -7.4, z: 30.4, y: 0, rot: EAST, outfit: 0, scale: 1.08, noCollider: true, grey: true },
-    { id: 'aajoba', task: 'watching the lane from the Deshmukhs\' veranda', pose: 'sit-edge', x: -14.6, z: 20.0, y: 0.45, rot: SOUTH, outfit: 4, scale: 1.04, grey: true },
-    { id: 'well-talk-a', task: 'talking by the well', pose: 'talk', x: -17.2, z: 8.3, y: 0, rot: -1.01, outfit: 3, scale: 1.07 },
-    { id: 'well-talk-b', task: 'listening, water pot on the ground', pose: 'stand', x: -18.8, z: 9.3, y: 0, rot: 2.13, outfit: 1, scale: 1.02 },
-    { id: 'lamp-lighter', task: 'lighting the diyas on the deepastambha', pose: 'light-lamp', x: -4.05, z: -40.55, y: 0, rot: -2.3, outfit: 0, scale: 1.05 },
+    { id: 'pandal-helper', task: 'handing up the next garland', pose: 'hold-up', x: 11.9, z: 3.4, y: 0, rot: EAST, outfit: 3, scale: 1.0, name: 'Raju', lines: ['The potter by the pandal has new diyas — take some for the aarti.', 'Out here on the festival ground there\'s no roof for miles. Don\'t let the moon catch you in the open.'] },
+    { id: 'rangoli-boy', task: 'finishing the rangoli on the festival ground', pose: 'kneel', x: 3.1, z: 4.5, y: 0, rot: WEST, outfit: 2, scale: 0.9, name: 'Chintu', lines: ['Durva grows by the tank and along the field edges. Twenty-one blades to a bundle!', 'Don\'t step on my rangoli!'] },
+    { id: 'mithai-seller', task: 'arranging modak on the trays', pose: 'stand', x: -7.35, z: -30.3, y: 0, rot: EAST, outfit: 4, scale: 1.08, noCollider: true, name: 'Ganpat-kaka', lines: ['Ukadiche modak, fresh from the steamer! Take them to Bappa — they\'re his favourite.', 'The puja wants five modaks. There are six on the tray, so one is for you.'] },
+    { id: 'kirana-keeper', task: 'minding the kirana from his stool', pose: 'sit-stool', x: -7.4, z: 30.4, y: 0, rot: EAST, outfit: 0, scale: 1.08, noCollider: true, grey: true, name: 'Shankar-anna', lines: ['Rice for the akshata is on the counter. Take what the puja needs.', 'Coconuts? The puja stall by the temple has one, and there are more under the palms by your house and out in the grove.'] },
+    { id: 'aajoba', task: 'watching the lane from the Deshmukhs\' veranda', pose: 'sit-edge', x: -14.6, z: 20.0, y: 0.45, rot: SOUTH, outfit: 4, scale: 1.04, grey: true, name: 'Aajoba', lines: ['When the sky goes blue and the lamps burn brighter, the moon is coming. Nobody should see the Chaturthi moon — get indoors.', 'Any open door is yours tonight. Look for the lamp by the doorway.', 'Your bag won\'t hold everything at once. Carry what you can, offer it, and come back.'] },
+    { id: 'well-talk-a', task: 'talking by the well', pose: 'talk', x: -17.2, z: 8.3, y: 0, rot: -1.01, outfit: 3, scale: 1.07, name: 'Sadu', lines: ['Bananas? The fruit stall on the east lane, or the grove behind the Naiks\' house.', 'The clouds are thinning. That\'s how it starts.'] },
+    { id: 'well-talk-b', task: 'listening, water pot on the ground', pose: 'stand', x: -18.8, z: 9.3, y: 0, rot: 2.13, outfit: 1, scale: 1.02, name: 'Vithoba', lines: ['Flowers are in the tulsi garden past the Shindes\', and at the flower stall on the festival ground.', 'My wife says the moon brings bad luck on Chaturthi. My mother said the same.'] },
+    { id: 'lamp-lighter', task: 'lighting the diyas on the deepastambha', pose: 'light-lamp', x: -4.05, z: -40.55, y: 0, rot: -2.3, outfit: 0, scale: 1.05, name: 'Pujari-kaka', lines: ['The puja needs flowers, durva, a coconut, bananas, rice, diyas and modaks. Bring them to the mandapa.', 'Stand before Bappa and pray — it will steady you after the moonlight.'] },
   ],
 
   // Cut the rectangle's corners: beyond these the land rises into scrub and hills.

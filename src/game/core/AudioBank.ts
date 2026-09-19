@@ -27,6 +27,13 @@ export class AudioBank {
     this.sets.set(set, buffers.filter((b): b is AudioBuffer => b !== null));
   }
 
+  /** Registers a buffer made in code (see SoundFx) under a set name. */
+  addBuffer(set: string, buffer: AudioBuffer): void {
+    const list = this.sets.get(set) ?? [];
+    list.push(buffer);
+    this.sets.set(set, list);
+  }
+
   unlock(): void {
     if (this.context.state === 'suspended') void this.context.resume();
   }

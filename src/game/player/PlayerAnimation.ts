@@ -60,7 +60,9 @@ export class PlayerAnimation {
     this.mixer = new AnimationMixer(model);
     const native = new Map<string, number>();
     for (const clip of clips) {
-      native.set(clip.name, makeInPlace(clip));
+      // Clips made in code say how fast their stride travels; imported ones are measured.
+      const measured = (clip.userData as { groundSpeed?: number } | undefined)?.groundSpeed;
+      native.set(clip.name, measured ?? makeInPlace(clip));
       this.clips.set(clip.name, clip);
     }
     const start = (name: string) => {

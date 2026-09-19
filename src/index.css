@@ -72,3 +72,44 @@
     transform: translateY(-4px);
   }
 }
+
+/* The interaction prompt and HUD messages: a short rise into place. */
+@keyframes prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* The bag: up from the bottom on phones, in from the side on wider screens. */
+@keyframes bag-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* "+3 Flowers": pops in by the bag, drifts up, fades. */
+@keyframes pickup-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  12%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}

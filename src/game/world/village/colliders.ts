@@ -21,6 +21,8 @@ export interface LevelColliders {
   templeTrigger: Collider;
   /** Sensor handle → house id, one per veranda. */
   houseZones: Map<number, string>;
+  /** Each shelter's door leaf, enabled while the door is shut (house id → collider). */
+  doorColliders: Map<string, Collider>;
 }
 
 export function buildColliders(layout: VillageLayout, level: Level, physics: Physics): LevelColliders {
@@ -33,11 +35,13 @@ export function buildColliders(layout: VillageLayout, level: Level, physics: Phy
   const b = layout.bounds;
   physics.addBox(new Vector3((b.minX + b.maxX) / 2, -0.5, (b.minZ + b.maxZ) / 2), new Vector3(b.maxX - b.minX + 80, 1, b.maxZ - b.minZ + 80));
 
+  const doorColliders = new Map<string, Collider>();
   for (const solid of level.solids) {
     if (solid.layer === 'none') continue;
     const layer = LAYER[solid.layer];
     if (solid.kind === 'box') {
-      physics.addBox(c.set(solid.x, solid.y, solid.z), s.set(solid.sx, solid.sy, solid.sz), q.setFromAxisAngle(up, solid.rot), layer);
+      const col = physics.addBox(c.set(solid.x, solid.y, solid.z), s.set(solid.sx, solid.sy, solid.sz), q.setFromAxisAngle(up, solid.rot), layer);
+      if (solid.tag.endsWith(':door')) doorColliders.set(solid.tag.split(':')[1], col);
     } else if (solid.kind === 'cyl') {
       physics.addCylinder(c.set(solid.x, solid.y + solid.h / 2, solid.z), solid.h / 2, solid.r, layer);
     } else {
@@ -60,5 +64,5 @@ export function buildColliders(layout: VillageLayout, level: Level, physics: Phy
   const t = level.templeOffer;
   const templeTrigger = physics.addSensorBox(new Vector3(t.x, t.y + 1, t.z), new Vector3(3.2, 2, 2.6));
 
-  return { zones, templeTrigger, houseZones };
+  return { zones, templeTrigger, houseZones, doorColliders };
 }

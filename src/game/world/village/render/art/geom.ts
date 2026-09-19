@@ -25,11 +25,23 @@ import { type MaterialKit, type MatKey, TILE } from './materials';
 const KEEP = ['position', 'normal', 'uv', 'color'];
 
 /**
+ * Material substitutions for a batch: `key → [into, colour]`. Small metal fittings (grilles, bosses,
+ * lamp frames) read just as well as painted colour, and every material a batch drops is a draw call
+ * (and a shadow draw) saved.
+ */
+export type Remap = Partial<Record<MatKey, [MatKey, string]>>;
+
+/**
  * Collects geometry per material and merges it: a whole house becomes one mesh per material.
  * Every geometry gets the same attribute set (position, normal, uv, colour) so they merge cleanly.
  */
 export class Batch {
   private readonly parts = new Map<MatKey, BufferGeometry[]>();
+  private readonly remap: Remap;
+
+  constructor(opts: { remap?: Remap } = {}) {
+    this.remap = opts.remap ?? {};
+  }
 
   /**
    * Takes ownership of `geo`. The third argument is either a placement matrix or a fill colour
@@ -38,6 +50,11 @@ export class Batch {
   add(key: MatKey, geo: BufferGeometry, placeOrColor?: Matrix4 | Color | string, color?: Color | string): this {
     const m = placeOrColor instanceof Matrix4 ? placeOrColor : undefined;
     if (!(placeOrColor instanceof Matrix4) && placeOrColor !== undefined) color = placeOrColor;
+    const swap = this.remap[key];
+    if (swap) {
+      if (color === undefined && !geo.getAttribute('color')) color = swap[1];
+      key = swap[0];
+    }
     let g = geo.index ? geo.toNonIndexed() : geo;
     if (g !== geo) geo.dispose();
     if (m) g.applyMatrix4(m);

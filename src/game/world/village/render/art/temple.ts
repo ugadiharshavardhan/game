@@ -837,6 +837,8 @@ function details(a: ArtContext, p: Plan, m: Mats): Group {
   festoon(b, new Vector3(-s + 0.05, 2.62, gz + 0.38), new Vector3(s - 0.05, 2.62, gz + 0.38), 0.3, 0.045, true, 9);
   for (const sx of [-1, 1]) diya(b, lit, sx * (s + 0.33), 2.6 + 0.005, gz);
   a.lamps.anchor(world(0, 2.3, gz - 0.8), 1.6, '#ff9a3c', 6);
+  // And outside: the gate faces south, away from the evening sun — its lamps light its face.
+  a.lamps.anchor(world(0, 2.5, gz + 1.5), 2.2, '#ffa650', 8);
 
   const built = b.build(a.kit, { name: 'temple:details', cast: false });
   mb.build(built, { cast: false });

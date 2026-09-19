@@ -24,6 +24,13 @@ export const Layer = {
   /** Only used as the membership of camera queries. */
   Camera: 1 << 4,
   Trigger: 1 << 5,
+  /** Interaction volumes (items, doors, the altar): found by the interaction system, invisible to movement. */
+  Interact: 1 << 6,
+  /**
+   * The bodies of small collectibles. Nothing moves against them (you don't trip over a basket of
+   * flowers, and the camera ignores them); rays that ask for items — picking, placement — hit them.
+   */
+  Item: 1 << 7,
 } as const;
 export type Layer = (typeof Layer)[keyof typeof Layer];
 
@@ -35,6 +42,10 @@ const ALL = 0xffff;
 export const PLAYER_QUERY = groups(Layer.Player, Layer.World | Layer.Blocker | Layer.Prop);
 /** What the camera treats as solid. */
 export const CAMERA_QUERY = groups(Layer.Camera, Layer.World);
+/** Rays that look for collectibles. */
+export const ITEM_QUERY = groups(Layer.Camera, Layer.Item);
+/** What blocks the line of sight to something the player wants to use: walls, not props. */
+export const SIGHT_QUERY = groups(Layer.Camera, Layer.World);
 
 /**
  * Thin wrapper over a Rapier world: static level geometry, queries, stepping.
@@ -110,6 +121,62 @@ export class Physics {
       .setCollisionGroups(groups(Layer.Trigger, Layer.Player));
     if (rotation) desc.setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w });
     return this.world.createCollider(desc);
+  }
+
+  /**
+   * An interaction volume: an upright cylinder sensor, found by `interactablesAt`. A cylinder, so
+   * reach is measured across the ground whether the thing sits on a counter or at your feet.
+   */
+  addInteractTrigger(center: Vector3, radius: number, halfHeight: number): Collider {
+    return this.world.createCollider(
+      this.R.ColliderDesc.cylinder(halfHeight, radius)
+        .setTranslation(center.x, center.y, center.z)
+        .setSensor(true)
+        .setCollisionGroups(groups(Layer.Interact, Layer.Player)),
+    );
+  }
+
+  /** Interaction volumes containing `point`. */
+  interactablesAt(point: Vector3, out: Set<number>): Set<number> {
+    out.clear();
+    this.world.intersectionsWithPoint(
+      point,
+      (c) => {
+        out.add(c.handle);
+        return true;
+      },
+      undefined,
+      groups(Layer.Player, Layer.Interact),
+    );
+    return out;
+  }
+
+  remove(collider: Collider): void {
+    this.world.removeCollider(collider, false);
+  }
+
+  /**
+   * True if nothing in `filter` lies between `from` and `to`, ignoring the colliders in `ignore` —
+   * an object never blocks the view of itself.
+   */
+  lineOfSight(from: Vector3, to: Vector3, ignore: ReadonlySet<number>, filter = SIGHT_QUERY): boolean {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-4) return true;
+    const ray = new this.R.Ray(from, { x: dx / len, y: dy / len, z: dz / len });
+    const hit = this.world.castRay(
+      ray,
+      len,
+      true,
+      this.R.QueryFilterFlags.EXCLUDE_SENSORS,
+      filter,
+      undefined,
+      undefined,
+      (c) => !ignore.has(c.handle),
+    );
+    return hit === null;
   }
 
   /** Distance to the first solid hit along `dir` (unit), or null. Sensors and `exclude` are ignored. */

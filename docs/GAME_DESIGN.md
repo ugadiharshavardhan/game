@@ -1,7 +1,9 @@
 # Moonlight Seva — Game Design & Technical Architecture
 
 > NIAT Ganesh Chaturthi Game Design Contest
-> Status: design locked for MVP. Scaffold implemented; gameplay systems pending.
+> Status: design locked for MVP; the core loop is implemented (see [SYSTEMS.md](SYSTEMS.md)).
+> The build moved from 2D Phaser to third-person 3D on Three.js + Rapier; the systems below map
+> onto `src/game/` as SYSTEMS.md describes. Offerings are now seven puja items with quantities.
 
 ---
 
