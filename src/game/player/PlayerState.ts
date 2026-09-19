@@ -1,6 +1,7 @@
 /**
  * The player's state. Locomotion states are pushed in every frame by the controller;
  * Interacting and Hidden are explicit, lock movement, and take priority (Interacting over Hidden).
+ * A scripted walk (through a doorway) also locks input, but still reads as walking.
  */
 export const PlayerStateId = {
   Idle: 'idle',
@@ -20,6 +21,7 @@ export class PlayerState {
   private locomotion: PlayerStateId = PlayerStateId.Idle;
   private interacting = false;
   private hidden = false;
+  private scripted = false;
   private readonly listeners = new Set<StateListener>();
 
   get value(): PlayerStateId {
@@ -27,7 +29,12 @@ export class PlayerState {
   }
 
   get isLocked(): boolean {
-    return this.interacting || this.hidden;
+    return this.interacting || this.hidden || this.scripted;
+  }
+
+  /** Input is ignored while a cutscene-like walk (entering or leaving a house) plays. */
+  setScripted(on: boolean): void {
+    this.scripted = on;
   }
 
   onChange(listener: StateListener): () => void {

@@ -1,5 +1,6 @@
 import { Vector2 } from 'three';
 import { EventBus } from '../../shared/EventBus';
+import type { InputDevice } from '../../shared/events';
 
 /**
  * One input model over keyboard + mouse (pointer lock), gamepad and touch.
@@ -15,18 +16,36 @@ export class Input {
   readonly look = new Vector2();
   /** Look rate from a gamepad stick this frame, -1..1 per axis (camera scales by deg/s). */
   readonly lookStick = new Vector2();
+  /** Mouse-wheel notches this frame; positive zooms out. */
+  zoomNotches = 0;
+  /** Change in pinch spread this frame, pixels; positive = fingers apart = zoom in. */
+  pinchPixels = 0;
+  /** Held controller zoom, -1..1; positive zooms out. */
+  padZoom = 0;
+  /** Which device last turned the camera. Recentering only helps stick and touch players. */
+  lookSource: 'mouse' | 'touch' | 'stick' | null = null;
+  /** One-frame edge: snap the camera behind the player (R3). */
+  recenterPressed = false;
   run = false;
   slow = false;
   crouchPressed = false;
   interactPressed = false;
   pointerLocked = false;
   touchLook = false;
+  /** The device the player used last — prompts show its button. */
+  device: InputDevice = 'keyboard';
 
   private readonly keys = new Set<string>();
   private readonly pendingLook = new Vector2();
   private readonly touchMove = new Vector2();
   private moveTouchId: number | null = null;
   private lookTouchId: number | null = null;
+  /** A second finger on the look side turns the drag into a pinch. */
+  private pinchTouchId: number | null = null;
+  private readonly lastPinchTouch = new Vector2();
+  private lastPinchSpread = 0;
+  private pendingZoomNotches = 0;
+  private pendingPinch = 0;
   private readonly touchOrigin = new Vector2();
   private readonly lastLookTouch = new Vector2();
   private padButtons: boolean[] = [];
@@ -37,15 +56,32 @@ export class Input {
     canvas: HTMLCanvasElement,
   ) {
     this.canvas = canvas;
+    // On a phone every look is a touch look; let the camera treat it as such from the first frame.
+    if (matchMedia('(pointer: coarse)').matches) {
+      this.lookSource = 'touch';
+      this.device = 'touch';
+    }
     this.listen(window, 'keydown', (e) => this.onKey(e as KeyboardEvent, true));
     this.listen(window, 'keyup', (e) => this.onKey(e as KeyboardEvent, false));
     this.listen(window, 'blur', () => this.keys.clear());
     this.listen(document, 'mousemove', (e) => {
       if (!this.pointerLocked) return;
+      this.setDevice('keyboard');
       const m = e as MouseEvent;
       this.pendingLook.x += m.movementX;
       this.pendingLook.y += m.movementY;
     });
+    this.listen(
+      canvas,
+      'wheel',
+      (e) => {
+        const w = e as WheelEvent;
+        w.preventDefault();
+        // Pixel-mode wheels report ~100 per notch; line-mode ~3.
+        this.pendingZoomNotches += w.deltaMode === 1 ? w.deltaY / 3 : w.deltaY / 100;
+      },
+      { passive: false },
+    );
     this.listen(canvas, 'click', () => {
       if (!this.pointerLocked && !matchMedia('(pointer: coarse)').matches) void canvas.requestPointerLock?.();
     });
@@ -60,7 +96,7 @@ export class Input {
     this.cleanups.push(
       EventBus.on('input:action', ({ action }) => {
         if (action === 'interact') this.interactPressed = true;
-        else this.crouchPressed = true;
+        else if (action === 'crouch') this.crouchPressed = true;
       }),
     );
   }
@@ -84,7 +120,13 @@ export class Input {
     // Mouse / touch look
     this.look.copy(this.pendingLook);
     this.pendingLook.set(0, 0);
+    if (this.look.x !== 0 || this.look.y !== 0) this.lookSource = this.touchLook ? 'touch' : 'mouse';
     this.lookStick.set(0, 0);
+    this.zoomNotches = this.pendingZoomNotches;
+    this.pinchPixels = this.pendingPinch;
+    this.pendingZoomNotches = 0;
+    this.pendingPinch = 0;
+    this.padZoom = 0;
 
     this.pollGamepad();
   }
@@ -92,6 +134,7 @@ export class Input {
   endFrame(): void {
     this.crouchPressed = false;
     this.interactPressed = false;
+    this.recenterPressed = false;
   }
 
   releasePointer(): void {
@@ -107,6 +150,7 @@ export class Input {
   private onKey(e: KeyboardEvent, down: boolean): void {
     if (e.repeat) return;
     if (down) {
+      this.setDevice('keyboard');
       this.keys.add(e.code);
       if (e.code === 'KeyC') this.crouchPressed = true;
       if (e.code === 'KeyE') this.interactPressed = true;
@@ -126,17 +170,30 @@ export class Input {
       if (this.move.lengthSq() > 1) this.move.normalize();
     }
     this.lookStick.set(dz(pad.axes[2] ?? 0), dz(pad.axes[3] ?? 0));
+    if (this.lookStick.x !== 0 || this.lookStick.y !== 0) this.lookSource = 'stick';
     const pressed = pad.buttons.map((b) => b.pressed);
     const edge = (i: number) => pressed[i] && !this.padButtons[i];
+    if (lx !== 0 || ly !== 0 || this.lookStick.x !== 0 || this.lookStick.y !== 0 || pressed.some((p, i) => p && !this.padButtons[i])) this.setDevice('gamepad');
+    if (edge(3)) EventBus.emit('ui:inventory-toggle'); // Y / Triangle
     if (edge(0)) this.interactPressed = true; // A / Cross
     if (edge(1)) this.crouchPressed = true; // B / Circle
     if (pressed[10]) this.run = true; // L3
+    if (edge(11)) this.recenterPressed = true; // R3
+    if (pressed[12]) this.padZoom -= 1; // D-pad up: zoom in
+    if (pressed[13]) this.padZoom += 1; // D-pad down: zoom out
     this.padButtons = pressed;
+  }
+
+  private setDevice(d: InputDevice): void {
+    if (d === this.device) return;
+    this.device = d;
+    EventBus.emit('ui:input-device', { device: d });
   }
 
   // Left half of the screen: floating joystick. Right half: drag to look.
   private onTouchStart(e: TouchEvent): void {
     e.preventDefault();
+    this.setDevice('touch');
     for (const t of Array.from(e.changedTouches)) {
       const leftHalf = t.clientX < window.innerWidth / 2;
       if (leftHalf && this.moveTouchId === null) {
@@ -147,6 +204,10 @@ export class Input {
         this.lookTouchId = t.identifier;
         this.lastLookTouch.set(t.clientX, t.clientY);
         this.touchLook = true;
+      } else if (!leftHalf && this.pinchTouchId === null) {
+        this.pinchTouchId = t.identifier;
+        this.lastPinchTouch.set(t.clientX, t.clientY);
+        this.lastPinchSpread = this.lastPinchTouch.distanceTo(this.lastLookTouch);
       }
     }
   }
@@ -162,10 +223,20 @@ export class Input {
         if (this.touchMove.lengthSq() > 1) this.touchMove.normalize();
         if (this.touchMove.length() < 0.12) this.touchMove.set(0, 0);
       } else if (t.identifier === this.lookTouchId) {
-        this.pendingLook.x += t.clientX - this.lastLookTouch.x;
-        this.pendingLook.y += t.clientY - this.lastLookTouch.y;
+        // While pinching, the look finger only feeds the spread — no accidental turning.
+        if (this.pinchTouchId === null) {
+          this.pendingLook.x += t.clientX - this.lastLookTouch.x;
+          this.pendingLook.y += t.clientY - this.lastLookTouch.y;
+        }
         this.lastLookTouch.set(t.clientX, t.clientY);
+      } else if (t.identifier === this.pinchTouchId) {
+        this.lastPinchTouch.set(t.clientX, t.clientY);
       }
+    }
+    if (this.pinchTouchId !== null && this.lookTouchId !== null) {
+      const spread = this.lastPinchTouch.distanceTo(this.lastLookTouch);
+      this.pendingPinch += spread - this.lastPinchSpread;
+      this.lastPinchSpread = spread;
     }
   }
 
@@ -175,8 +246,17 @@ export class Input {
         this.moveTouchId = null;
         this.touchMove.set(0, 0);
       } else if (t.identifier === this.lookTouchId) {
-        this.lookTouchId = null;
-        this.touchLook = false;
+        // If a pinch finger remains, it becomes the look finger.
+        if (this.pinchTouchId !== null) {
+          this.lookTouchId = this.pinchTouchId;
+          this.lastLookTouch.copy(this.lastPinchTouch);
+          this.pinchTouchId = null;
+        } else {
+          this.lookTouchId = null;
+          this.touchLook = false;
+        }
+      } else if (t.identifier === this.pinchTouchId) {
+        this.pinchTouchId = null;
       }
     }
   }

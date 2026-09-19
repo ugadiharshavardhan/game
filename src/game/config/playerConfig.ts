@@ -1,6 +1,6 @@
 /**
- * Every tunable number for the player: movement, capsule, animation, camera,
- * interaction and audio. One object, one place — components never hard-code feel.
+ * Every tunable number for the player: movement, capsule, animation, interaction and
+ * audio. Camera values live in camera/CameraConfig.ts. One object, one place — components never hard-code feel.
  */
 export interface PlayerConfig {
   // Speeds (m/s)
@@ -42,23 +42,6 @@ export interface PlayerConfig {
   minMotionSpeed: number;
   maxMotionSpeed: number;
 
-  // Camera
-  shoulderOffset: number;
-  cameraHeight: number;
-  crouchCameraHeight: number;
-  cameraDistance: number;
-  crouchCameraDistance: number;
-  pitchMinDeg: number;
-  pitchMaxDeg: number;
-  /** Degrees per pixel of mouse movement. */
-  mouseSensitivity: number;
-  /** Degrees per pixel of touch drag. */
-  touchSensitivity: number;
-  baseFov: number;
-  runFovBoost: number;
-  /** Seconds for camera framing changes (crouch, run FOV) to settle. */
-  cameraBlendTime: number;
-  cameraCollisionRadius: number;
 
   // Interaction
   interactRadius: number;
@@ -102,19 +85,6 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   minMotionSpeed: 0.7,
   maxMotionSpeed: 1.35,
 
-  shoulderOffset: 0.45,
-  cameraHeight: 1.55,
-  crouchCameraHeight: 1.1,
-  cameraDistance: 3.2,
-  crouchCameraDistance: 2.5,
-  pitchMinDeg: -35,
-  pitchMaxDeg: 60,
-  mouseSensitivity: 0.12,
-  touchSensitivity: 0.25,
-  baseFov: 55,
-  runFovBoost: 6,
-  cameraBlendTime: 0.25,
-  cameraCollisionRadius: 0.25,
 
   interactRadius: 1.8,
   interactMaxAngleDeg: 70,
@@ -138,7 +108,6 @@ export function validatePlayerConfig(c: PlayerConfig): string[] {
   if (c.gravity >= 0) errors.push('Gravity must be negative.');
   if (c.crouchHeight >= c.standHeight) errors.push('Crouch height must be below stand height.');
   if (c.radius * 2 > c.crouchHeight) errors.push('Capsule radius too large for crouch height.');
-  if (c.pitchMinDeg >= c.pitchMaxDeg) errors.push('Pitch min must be below pitch max.');
   if (c.minMotionSpeed <= 0 || c.minMotionSpeed > c.maxMotionSpeed) {
     errors.push('Motion speed clamp is invalid.');
   }

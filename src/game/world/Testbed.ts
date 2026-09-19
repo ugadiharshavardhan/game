@@ -27,18 +27,10 @@ import {
 } from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import type { Physics } from '../core/Physics';
+import type { IInteractable } from '../interaction/IInteractable';
 import { TestDoor, TestPickup, TestShrine } from './testInteractables';
-import type { Interactable } from '../player/PlayerInteraction';
+import type { World } from './World';
 
-export interface World {
-  interactables: Interactable[];
-  spawn: Vector3;
-  spawnYaw: number;
-  sun: DirectionalLight;
-  /** Keeps the shadow frustum centred on the player for crisp shadows. */
-  follow(target: Vector3): void;
-  dispose(): void;
-}
 
 const ASSETS = `${import.meta.env.BASE_URL}assets/textures`;
 
@@ -155,7 +147,7 @@ export async function buildTestbed(scene: Scene, renderer: WebGLRenderer, physic
   block(new Vector3(3.6, 0.3, 1.6), new Vector3(0, 1.3, 9), wood);
 
   // --- Interactables ------------------------------------------------------------------------
-  const interactables: Interactable[] = [];
+  const interactables: IInteractable[] = [];
 
   // Coconut on a low stone.
   const stone = block(new Vector3(0.6, 0.3, 0.6), new Vector3(0, 0.15, 3.2), plaster);
@@ -208,12 +200,13 @@ export async function buildTestbed(scene: Scene, renderer: WebGLRenderer, physic
   leaf.castShadow = leaf.receiveShadow = true;
   hinge.add(leaf);
   // The doorway itself is closed to physics; only the door interaction lets you in.
-  physics.addBox(new Vector3(0, 1.05, 0).applyQuaternion(hutQ).add(hut.position), new Vector3(0.9, 2.1, 0.1), hutQ);
-  const doorFront = new Vector3(0, 0, 0.6).applyQuaternion(hutQ).add(hut.position);
-  interactables.push(new TestDoor(doorFront, hinge));
+  const doorCollider = physics.addBox(new Vector3(0, 1.05, 0).applyQuaternion(hutQ).add(hut.position), new Vector3(0.9, 2.1, 0.1), hutQ);
+  const doorFront = new Vector3(0, 0, 0.3).applyQuaternion(hutQ).add(hut.position);
+  interactables.push(new TestDoor(doorFront, hinge, doorCollider));
 
   return {
     interactables,
+    shelter: null,
     spawn: new Vector3(0, 0, 0),
     spawnYaw: 0,
     sun,

@@ -12,7 +12,25 @@
  *   everything else is a simulation fact broadcast by the engine.
  */
 
-import type { PlayerStateName, RunResult } from './types';
+import type { InventorySnapshot, ItemId } from './items';
+import type { MoonPhase, PlayerStateName, RunResult } from './types';
+
+/** What the interaction prompt shows. Plain text only — React decides how it looks per device. */
+export interface PromptInfo {
+  /** Changes whenever the target changes, so React can animate the swap. */
+  id: string;
+  /** "Collect", "Enter house", "Offer" — the verb, sentence case. */
+  verb: string;
+  /** The touch button's label: "COLLECT", "ENTER". */
+  mobileVerb: string;
+  /** What it acts on: "Marigolds ×3", "the Patils' home". */
+  detail?: string;
+  /** False when the verb can't be done right now (a full bag); `note` says why. */
+  enabled: boolean;
+  note?: string;
+}
+
+export type InputDevice = 'keyboard' | 'gamepad' | 'touch';
 
 export interface GameEventMap {
   // ---- engine -> React -------------------------------------------------
@@ -24,19 +42,52 @@ export interface GameEventMap {
   'run:started': { seed: number };
   /** A run ended; payload is everything the results screen needs. */
   'run:completed': RunResult;
-  /** The interactable the player is facing changed. `null` hides the prompt. */
-  'ui:prompt': { text: string } | null;
+  /** The interactable the player would use changed. `null` hides the prompt. */
+  'ui:prompt': PromptInfo | null;
+  /**
+   * Where the prompt's anchor is on screen this frame, as fractions of the canvas (0..1, y down).
+   * `visible` is false when the anchor is behind the camera or off screen.
+   */
+  'ui:prompt-position': { x: number; y: number; visible: boolean };
   /** The player's state changed (idle, walking, running, sneaking, interacting, hidden). */
   'ui:player-state': { state: PlayerStateName };
+  /** The player walked into a named place (null between places). `open` = no cover from the moon. */
+  'ui:area': { name: string; open: boolean } | null;
   /** Mouse capture changed. The browser releases it on Esc, which React treats as "pause". */
   'ui:pointer-lock': { locked: boolean };
+  /** The controller's bag button (Y / Triangle) was pressed: open or close the bag. */
+  'ui:inventory-toggle': undefined;
+  /** The last device the player used, for button glyphs. */
+  'ui:input-device': { device: InputDevice };
+  /** The bag or the temple's tally changed. */
+  'ui:inventory': InventorySnapshot;
+  /** Something was just picked up (quantity taken; `leftBehind` > 0 when the bag filled up). */
+  'ui:pickup': { id: ItemId; quantity: number; leftBehind: number };
+  /** Rendered 3D icons for the bag, as image URLs. Sent once, after the art has loaded. */
+  'ui:item-icons': { icons: Partial<Record<ItemId, string>> };
+  /** A villager says something (their name, and the line). */
+  'ui:speech': { speaker: string; text: string };
+  /** A short message: "The bag is full", "You dropped 3 offerings". */
+  'ui:toast': { text: string; tone: 'info' | 'warn' | 'good' };
+  /** The moon's phase changed, or progressed (sent a few times a second). */
+  'ui:moon': { phase: MoonPhase; progress: number; dangerous: boolean };
+  /** Purity, 0..100, and whether the moon is draining it right now. */
+  'ui:purity': { value: number; exposed: boolean };
+  /** The player went indoors (safe) or came back out. */
+  'ui:shelter': { inside: boolean; family: string | null };
+  /** Every offering has been placed before Bappa. */
+  'ui:puja-complete': undefined;
 
   // ---- React -> engine -------------------------------------------------
   /** Pause is React-owned; the engine only obeys. */
   'game:pause': undefined;
   'game:resume': undefined;
-  /** On-screen buttons for touch devices. */
-  'input:action': { action: 'interact' | 'crouch' };
+  /** Player-facing camera settings from the pause menu (persisted by React). */
+  'game:camera-settings': { sensitivity: number; invertY: boolean };
+  /** The bag is open: movement input is ignored so arrows and the stick can browse it. */
+  'game:inventory-open': { open: boolean };
+  /** On-screen buttons for touch devices (and the bag's open/close key). */
+  'input:action': { action: 'interact' | 'crouch' | 'inventory' };
 }
 
 export type GameEventName = keyof GameEventMap;
