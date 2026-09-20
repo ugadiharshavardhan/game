@@ -27,6 +27,7 @@ const BED_GAIN: Record<BedName, number> = { evening: 0.5, night: 0.55, moon: 0.4
 /** Beds are synthesised at half rate: nothing in them lives above 10 kHz, and it halves the work. */
 const BED_RATE = 22050;
 
+
 interface Bed {
   gain: GainNode;
   panner: PannerNode | null;
@@ -43,7 +44,7 @@ export class Ambience {
   private indoors = false;
   private started = false;
 
-  constructor(bank: AudioBank) {
+  constructor(bank: AudioBank, rate = BED_RATE) {
     this.ctx = bank.context;
     this.muffle = this.ctx.createBiquadFilter();
     this.muffle.type = 'lowpass';
@@ -53,8 +54,8 @@ export class Ambience {
     this.muffle.connect(this.bus).connect(bank.bus);
 
     for (const name of ['evening', 'night', 'moon', 'festival', 'temple'] as BedName[]) {
-      const buffer = this.ctx.createBuffer(1, Math.round(BEDS[name].seconds * BED_RATE), BED_RATE);
-      buffer.copyToChannel(loop(BEDS[name].make(BED_RATE, BEDS[name].seconds), BED_RATE) as Float32Array<ArrayBuffer>, 0);
+      const buffer = this.ctx.createBuffer(1, Math.round(BEDS[name].seconds * rate), rate);
+      buffer.copyToChannel(loop(BEDS[name].make(rate, BEDS[name].seconds), rate) as Float32Array<ArrayBuffer>, 0);
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;

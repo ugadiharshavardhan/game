@@ -5,9 +5,11 @@
  *   __seva.teleport(x, z, yawDeg)   __seva.look(yawDeg, pitchDeg)   __seva.info()
  *   await __seva.walkTo(x, z, { run, sneak })  — autopilot over the nav grid, real controller
  *   __seva.moon('active')   __seva.give('flowers', 3)   __seva.interact()
+ *   __seva.ghost('Arjun', x, z, 'walking') / __seva.unghost()  — stand-in teammates
  *   await __seva.enter('patil') / __seva.leave()  — a shelter's door sequence, for real
  */
 import { Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three';
+import type { RemotePeer } from '../../shared/multiplayer';
 import type { MoonStateName } from '../../shared/types';
 import type { ItemId } from '../../shared/items';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
@@ -22,6 +24,8 @@ export interface DevHandle {
   scene: Scene;
   camera: PerspectiveCamera;
   input: Input;
+  /** Stand-in teammates, so ghosts can be looked at without a second player. */
+  fakePeers: RemotePeer[];
   physics: Physics;
   player: Player;
   cameraRig: ThirdPersonCamera;
@@ -118,11 +122,27 @@ export async function installDevtools(h: DevHandle): Promise<void> {
     moon(state: MoonStateName) {
       h.gameplay.moon.skipTo(state);
     },
+    /** A stand-in teammate, for looking at ghosts without a second player. */
+    ghost(name = 'Arjun', x = 0, z = 0, state = 'idle') {
+      const id = `PLY_${name.toUpperCase().slice(0, 5)}`;
+      const existing = h.fakePeers.find((p: RemotePeer) => p.playerId === id);
+      const peer = existing ?? { playerId: id, displayName: name, x, y: 0, z, yaw: 0, state, indoors: false, presence: 1 };
+      Object.assign(peer, { displayName: name, x, z, state, presence: 1 });
+      if (!existing) h.fakePeers.push(peer);
+      return h.fakePeers.length;
+    },
+    unghost() {
+      h.fakePeers.length = 0;
+    },
     give(item: ItemId, n = 1) {
       return h.gameplay.inventory.add(item, n);
     },
     interact() {
       h.input.interactPressed = true;
+    },
+    /** Toggles the sneak/crouch gait, as the C key or the SNEAK button would. */
+    sneak() {
+      h.input.crouchPressed = true;
     },
     /** Walks to a shelter's door and goes in; resolves once inside with the door shut. */
     async enter(houseId: string): Promise<{ ok: boolean; reason?: string }> {

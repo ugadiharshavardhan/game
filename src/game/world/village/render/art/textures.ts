@@ -46,9 +46,12 @@ export class TextureBank {
   private readonly canvases = new Map<string, CanvasTexture>();
   private readonly loader = new TextureLoader();
   private readonly anisotropy: number;
+  /** Textures wider than this are redrawn smaller: the cheapest win in video memory there is. */
+  private readonly maxSize: number;
 
-  constructor(renderer: WebGLRenderer) {
-    this.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+  constructor(renderer: WebGLRenderer, maxAnisotropy = 8, maxSize = 2048) {
+    this.maxSize = maxSize;
+    this.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), maxAnisotropy);
   }
 
   async load(names: readonly PbrSetName[], onProgress?: (p: number) => void): Promise<void> {
@@ -101,9 +104,33 @@ export class TextureBank {
 
   private async tex(path: string, srgb: boolean): Promise<Texture> {
     const t = await this.loader.loadAsync(`${ROOT}/${path}`);
+    shrink(t, this.maxSize);
     t.wrapS = t.wrapT = RepeatWrapping;
     t.anisotropy = this.anisotropy;
     if (srgb) t.colorSpace = SRGBColorSpace;
     return t;
   }
+}
+
+/**
+ * Redraws a texture at half (or a quarter) size when the device has asked for less.
+ *
+ * A 2K wall texture costs 16 MB of video memory with its mipmaps; at 512 it costs one megabyte,
+ * and on a phone's screen, at the distance a wall is ever seen from, nobody can tell. This runs
+ * once per texture at load, on the GPU, and is the difference between the game fitting in a
+ * phone's memory and not.
+ */
+function shrink(texture: Texture, maxSize: number): void {
+  const image = texture.image as (HTMLImageElement & { width: number; height: number }) | undefined;
+  if (!image?.width || image.width <= maxSize) return;
+  const scale = maxSize / image.width;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(image, 0, 0, canvas.width, canvas.height);
+  texture.image = canvas;
+  texture.needsUpdate = true;
 }

@@ -1,5 +1,6 @@
 import type { Camera, Object3D, Scene, Vector3, WebGLRenderer } from 'three';
 import type { SoundKey } from '../../../audio/SoundFx';
+import type { QualityProfile } from '../../../core/quality';
 import type { ItemId } from '../../../../shared/items';
 import type { PujaItemVisual } from '../../../items/PujaItem';
 import type { PujaCeremony } from './art/temple.puja';
@@ -13,6 +14,8 @@ export interface VisualsContext {
   layout: VillageLayout;
   level: Level;
   env: Environment;
+  /** How much this device can be asked for: LOD distances, lights, particles. */
+  quality: QualityProfile;
   /** The world's own sounds (a dog barking down the lane). */
   sound?: (key: SoundKey, volume?: number) => void;
   onProgress?: (p: number) => void;

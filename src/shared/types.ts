@@ -14,6 +14,21 @@ export interface Vec2 {
 /** App-level state machine owned by React. */
 export type AppState = 'menu' | 'playing' | 'results';
 
+/** How hard the renderer is allowed to work. 'auto' asks the device. */
+export type QualityLevel = 'auto' | 'low' | 'medium' | 'high';
+
+/** Everything the player can change about how the game runs. */
+export interface GameSettings {
+  /** Look sensitivity, 0.25–3. */
+  sensitivity: number;
+  invertY: boolean;
+  /** Master volume, 0–1. */
+  volume: number;
+  quality: QualityLevel;
+  /** Touch controls: shown on a touch device by default, but forceable either way. */
+  showTouchControls: 'auto' | 'on' | 'off';
+}
+
 /** Mirrors the engine's PlayerStateId values; duplicated here so React never imports the engine. */
 export type PlayerStateName = 'idle' | 'walking' | 'running' | 'sneaking' | 'interacting' | 'hidden';
 

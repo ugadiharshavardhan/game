@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { GameOptions } from '../../game';
 import { useGameEvent } from '../hooks/useGameEvent';
 
 /**
@@ -10,8 +11,10 @@ import { useGameEvent } from '../hooks/useGameEvent';
  *    there; React must never also manage that node's children. Loading and error
  *    states are siblings.
  */
-export function GameCanvas() {
+export function GameCanvas({ options }: { options?: GameOptions }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The engine is built once per mount: the options it starts with are the ones it keeps.
+  const optionsRef = useRef(options ?? {});
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -32,7 +35,7 @@ export function GameCanvas() {
         // StrictMode may have already run the cleanup by the time this resolves.
         if (cancelled) return;
         teardown = engine.destroyGame;
-        await engine.createGame(parent);
+        await engine.createGame(parent, optionsRef.current);
       } catch (error) {
         console.error('[Moonlight Seva] the game engine failed to start', error);
         if (!cancelled) setFailed(true);

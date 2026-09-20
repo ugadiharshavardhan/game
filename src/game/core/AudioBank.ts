@@ -39,6 +39,11 @@ export class AudioBank {
     this.sets.set(set, list);
   }
 
+  /** Master volume, 0–1 (the settings panel). */
+  setVolume(volume: number): void {
+    this.master.gain.value = Math.min(Math.max(volume, 0), 1);
+  }
+
   unlock(): void {
     if (this.context.state === 'suspended') void this.context.resume();
   }

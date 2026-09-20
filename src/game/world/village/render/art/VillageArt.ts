@@ -29,6 +29,7 @@ const MODULES: Record<string, () => Promise<{ build: ArtModule }>> = {
   festival: () => import('./festival'),
   npcs: () => import('./npcs'),
   life: () => import('./life'),
+  ambient: () => import('./ambient'),
 };
 
 const landmarkKind = (s: Solid) => s.tag.split(':')[1];
@@ -56,7 +57,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
   const only = new URLSearchParams(location.search).get('only')?.split(',');
   const on = (m: string) => !only || only.includes(m);
 
-  const bank = new TextureBank(ctx.renderer);
+  const bank = new TextureBank(ctx.renderer, ctx.quality.anisotropy, ctx.quality.textureSize);
   await bank.load([...PBR_SETS, 'Ground037', 'Ground106', 'Ground110', 'Grass004'], (p) => ctx.onProgress?.(p * 0.7));
   const kit = new MaterialKit(bank);
   const root = new Group();
@@ -68,8 +69,8 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     kit,
     root,
     flames: new FlameField(bank),
-    lamps: new LampPool(root, 6),
-    culler: new Culler(),
+    lamps: new LampPool(root, ctx.quality.lamps),
+    culler: new Culler(ctx.quality.detail),
     ground: null,
     shared: { templeGlow: 0, moonlight: 0, goingHome: false, dangerous: false, noise: 0, player: new Vector3() },
     tick: [],
@@ -104,6 +105,13 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     filter: (s) => !covered.some((m) => COVERS[m](s)),
   });
   a.flames.build(root);
+  // Every level of detail in the village, moved in or out by quality in one place.
+  if (ctx.quality.detail !== 1) {
+    root.traverse((o) => {
+      const lod = o as unknown as { isLOD?: boolean; levels?: Array<{ distance: number }> };
+      if (lod.isLOD && lod.levels) for (const level of lod.levels) level.distance *= ctx.quality.detail;
+    });
+  }
   ctx.onProgress?.(1);
 
   const puja = buildCeremony(a);

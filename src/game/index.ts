@@ -9,13 +9,15 @@
  * React StrictMode mounting effects twice (two engines, two canvases), and HMR
  * re-running this module (leaked WebGL contexts, capped at ~16 per page).
  */
-import { Engine } from './core/Engine';
+import { Engine, type GameOptions } from './core/Engine';
+
+export type { GameOptions };
 
 let engine: Engine | null = null;
 
-export async function createGame(parent: HTMLElement): Promise<void> {
+export async function createGame(parent: HTMLElement, options: GameOptions = {}): Promise<void> {
   destroyGame();
-  const current = new Engine(parent);
+  const current = new Engine(parent, options);
   engine = current;
   await current.start();
 }

@@ -113,3 +113,40 @@
     transform: translateY(-10px);
   }
 }
+
+/* ---- the main menu ---------------------------------------------------------------------------
+   The menu's village is a still photograph. What little moves does so slowly enough that you
+   notice it only if you sit and look: the frame drifts, the moon climbs, the lamps breathe, and
+   a few motes cross the foreground. All of it is off for anyone who asks for less motion. */
+
+@keyframes menu-drift {
+  0% { transform: scale(1.08) translate3d(-1.2%, 0.6%, 0); }
+  100% { transform: scale(1.14) translate3d(1.2%, -0.8%, 0); }
+}
+
+@keyframes menu-moonrise {
+  0% { transform: translate3d(0, 26px, 0) scale(0.92); opacity: 0.55; }
+  100% { transform: translate3d(0, -10px, 0) scale(1.06); opacity: 0.95; }
+}
+
+@keyframes menu-lamps {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+@keyframes menu-mote {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  12% { opacity: 0.75; }
+  88% { opacity: 0.6; }
+  100% { transform: translate3d(28px, -68vh, 0); opacity: 0; }
+}
+
+.menu-drift { animation: menu-drift 48s ease-in-out infinite alternate; }
+.menu-moonrise { animation: menu-moonrise 90s ease-out infinite alternate; }
+.menu-lamps { animation: menu-lamps 7s ease-in-out infinite; }
+.menu-mote { animation-name: menu-mote; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-drift, .menu-moonrise, .menu-lamps, .menu-mote { animation: none; }
+  .menu-moonrise { opacity: 0.9; }
+}

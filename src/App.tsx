@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { GameOptions } from './game';
 import { EventBus } from './shared/EventBus';
 import type { InputDevice, PromptInfo } from './shared/events';
 import { INVENTORY_CAPACITY, ITEM_IDS, type InventorySnapshot, type ItemId } from './shared/items';
-import type { AppState, PlayerStateName, RunResult } from './shared/types';
+import type { AppState, GameSettings, PlayerStateName, RunResult } from './shared/types';
 import { GameCanvas } from './ui/components/GameCanvas';
 import { Hud } from './ui/components/Hud';
 import { InventoryUI } from './ui/components/InventoryUI';
-import { MainMenu } from './ui/components/MainMenu';
 import { type CameraSettings, PauseOverlay } from './ui/components/PauseOverlay';
 import { ResultsScreen } from './ui/components/ResultsScreen';
 import { TouchControls } from './ui/components/TouchControls';
+import { TutorialCard } from './ui/components/TutorialCard';
 import { useGameEvent } from './ui/hooks/useGameEvent';
+import { MainMenu } from './ui/menu/MainMenu';
+import { services, useObservable } from './ui/services';
+import { loadSettings, saveSettings } from './ui/settings';
 
 /**
- * The app-level state machine: menu ⇄ playing ⇄ results. The 3D engine is mounted only while
- * playing — quitting or finishing unmounts `GameCanvas`, which destroys it; Play again mounts a
- * fresh one (a new `runKey`), so a new run starts from nothing.
+ * The app-level state machine: menu ⇄ playing ⇄ results, with a lobby's session and the short
+ * tutorial hanging off the same `playing` state.
+ *
+ * The 3D engine is mounted only while playing — quitting or finishing unmounts `GameCanvas`,
+ * which destroys it; Play again mounts a fresh one (a new `runKey`), so a new run starts from
+ * nothing. A team's run carries two extra things into the engine: the session's moon, and the
+ * link its teammates' ghosts are drawn from.
  */
-const CAMERA_KEY = 'moonlight-seva.camera';
-const DEFAULT_CAMERA: CameraSettings = { sensitivity: 1, invertY: false };
-
 const EMPTY_BAG: InventorySnapshot = {
   capacity: INVENTORY_CAPACITY,
   used: 0,
@@ -30,19 +35,13 @@ const EMPTY_BAG: InventorySnapshot = {
 
 const initialDevice = (): InputDevice => (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
 
-function loadCameraSettings(): CameraSettings {
-  try {
-    const raw = localStorage.getItem(CAMERA_KEY);
-    return raw ? { ...DEFAULT_CAMERA, ...(JSON.parse(raw) as Partial<CameraSettings>) } : DEFAULT_CAMERA;
-  } catch {
-    return DEFAULT_CAMERA;
-  }
-}
+/** One set of services for the whole app, made before the first render. */
+const { profiles, teams, session, sync, scores, net } = services();
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('menu');
   const [paused, setPaused] = useState(false);
-  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(loadCameraSettings);
+  const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [bagOpen, setBagOpen] = useState(false);
   const bagOpenRef = useRef(false);
   const [bag, setBag] = useState<InventorySnapshot>(EMPTY_BAG);
@@ -54,6 +53,18 @@ export default function App() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [runKey, setRunKey] = useState(0);
   const [portrait, setPortrait] = useState(false);
+  const [options, setOptions] = useState<GameOptions>({});
+  // What the session subscription needs to know without re-subscribing every render.
+  const stateRef = useRef<AppState>('menu');
+  const settingsRef = useRef(settings);
+
+  const profile = useObservable(profiles.profile);
+  const team = useObservable(teams.team);
+
+  useEffect(() => {
+    stateRef.current = appState;
+    settingsRef.current = settings;
+  }, [appState, settings]);
 
   useGameEvent('ui:inventory', setBag);
   useGameEvent('ui:item-icons', ({ icons: i }) => setIcons(i));
@@ -61,12 +72,42 @@ export default function App() {
   useGameEvent('ui:prompt', setPrompt);
   useGameEvent('ui:player-state', ({ state }) => setPlayerState(state));
   useGameEvent('ui:cinematic', ({ active }) => setCinematic(active));
+
+  const startRun = useCallback(
+    (next: GameOptions) => {
+      setPaused(false);
+      setBag(EMPTY_BAG);
+      setPrompt(null);
+      setResult(null);
+      setCinematic(false);
+      scores.clear();
+      setOptions(next);
+      setRunKey((k) => k + 1);
+      setAppState('playing');
+    },
+    [],
+  );
+
+  // A finished run: the referee scores it, and its word is what the results screen shows.
   useGameEvent('run:completed', (r) => {
     setResult(r);
     setBagOpen(false);
     bagOpenRef.current = false;
     setAppState('results');
+    profiles.recordRun(r.breakdown.total);
+    if (profile) scores.submit(profile.playerId, session.session.get()?.sessionId ?? null, r);
   });
+
+  // The host pressed start: everyone in the lobby walks into the same village. This listens to
+  // the session rather than deriving it, because "a session began" is an event, not a state.
+  useEffect(
+    () =>
+      session.session.subscribe((live) => {
+        if (!live || stateRef.current !== 'menu') return;
+        startRun({ session: session.clock() ?? undefined, link: sync, quality: settingsRef.current.quality });
+      }),
+    [startRun],
+  );
 
   const openBag = useCallback((open: boolean) => {
     if (open === bagOpenRef.current) return;
@@ -78,28 +119,18 @@ export default function App() {
   }, []);
   useGameEvent('ui:inventory-toggle', () => openBag(!bagOpenRef.current));
 
-  const changeCamera = useCallback((next: CameraSettings) => {
-    setCameraSettings(next);
-    EventBus.emit('game:camera-settings', next);
-    try {
-      localStorage.setItem(CAMERA_KEY, JSON.stringify(next));
-    } catch {
-      // Private mode or blocked storage: the setting still applies for this session.
-    }
+  const changeSettings = useCallback((next: GameSettings) => {
+    setSettings(next);
+    saveSettings(next);
+    EventBus.emit('game:camera-settings', { sensitivity: next.sensitivity, invertY: next.invertY });
   }, []);
+  const cameraSettings: CameraSettings = { sensitivity: settings.sensitivity, invertY: settings.invertY };
 
   // The engine loads asynchronously; hand it the saved settings once it's up.
-  useGameEvent('scene:ready', () => EventBus.emit('game:camera-settings', cameraSettings));
-
-  const startRun = useCallback(() => {
-    setPaused(false);
-    setBag(EMPTY_BAG);
-    setPrompt(null);
-    setResult(null);
-    setCinematic(false);
-    setRunKey((k) => k + 1);
-    setAppState('playing');
-  }, []);
+  useGameEvent('scene:ready', () => {
+    EventBus.emit('game:camera-settings', cameraSettings);
+    EventBus.emit('game:settings', settings);
+  });
 
   const quitToMenu = useCallback(() => {
     setPaused(false);
@@ -107,6 +138,7 @@ export default function App() {
     setBagOpen(false);
     setCinematic(false);
     setAppState('menu');
+    sync.clear();
   }, []);
 
   // A phone held upright plays, but the village is worth seeing wide.
@@ -134,7 +166,6 @@ export default function App() {
         EventBus.emit('game:skip-cinematic');
         return;
       }
-      // The bag: I or Tab; Escape closes it before it would pause.
       if (event.code === 'KeyI' || event.code === 'Tab') {
         event.preventDefault();
         openBag(!bagOpenRef.current);
@@ -172,13 +203,24 @@ export default function App() {
     EventBus.emit(paused ? 'game:pause' : 'game:resume');
   }, [appState, paused]);
 
-  if (appState === 'menu') return <MainMenu onPlay={startRun} />;
+  if (appState === 'menu') {
+    return (
+      <MainMenu
+        onPlaySolo={() => startRun({ quality: settings.quality })}
+        onTutorial={() => startRun({ tutorial: true, quality: settings.quality })}
+        settings={settings}
+        onSettings={changeSettings}
+      />
+    );
+  }
 
-  const touch = device === 'touch';
+  const touch = settings.showTouchControls === 'on' || (settings.showTouchControls === 'auto' && device === 'touch');
 
   return (
     <main className="relative h-full w-full overflow-hidden bg-night-950">
-      {appState === 'playing' && <GameCanvas key={runKey} />}
+      {appState === 'playing' && <GameCanvas key={runKey} options={options} />}
+
+      {appState === 'playing' && options.tutorial && !paused && <TutorialCard onPlay={() => startRun({})} onMenu={quitToMenu} />}
 
       {appState === 'playing' && !paused && (
         <>
@@ -228,10 +270,19 @@ export default function App() {
       )}
 
       {paused && appState === 'playing' && (
-        <PauseOverlay onResume={() => setPaused(false)} onQuit={quitToMenu} camera={cameraSettings} onCameraChange={changeCamera} />
+        <PauseOverlay onResume={() => setPaused(false)} onQuit={quitToMenu} camera={cameraSettings} onCameraChange={(c) => changeSettings({ ...settings, ...c })} />
       )}
 
-      {appState === 'results' && result && <ResultsScreen result={result} onPlayAgain={startRun} onMainMenu={quitToMenu} />}
+      {appState === 'results' && result && (
+        <ResultsScreen
+          result={result}
+          profile={profile}
+          team={team}
+          connected={net.status.get() === 'online'}
+          onPlayAgain={() => startRun(options)}
+          onMainMenu={quitToMenu}
+        />
+      )}
     </main>
   );
 }

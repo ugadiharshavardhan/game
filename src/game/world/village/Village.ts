@@ -14,7 +14,8 @@ import { SafeHouse } from '../../shelter/SafeHouse';
 import { ShelterManager } from '../../shelter/ShelterManager';
 import { HouseInterior } from '../../shelter/HouseInterior';
 import { MoonLightingController } from '../../moon/MoonLightingController';
-import { buildEnvironment } from '../environment';
+import { PROFILES, type QualityProfile } from '../../core/quality';
+import { buildEnvironment, EVENING } from '../environment';
 import type { World, WorldFrame, WorldServices } from '../World';
 import { buildColliders } from './colliders';
 import { PujaSequence } from './PujaSequence';
@@ -32,9 +33,10 @@ export async function buildVillage(
   physics: Physics,
   view: VillageView,
   services: WorldServices,
+  quality: QualityProfile = PROFILES.high,
 ): Promise<World & { triggers: TriggerSystem; items: PujaItem[] }> {
   const level = buildLevel(VILLAGE);
-  const env = buildEnvironment(scene, renderer);
+  const env = buildEnvironment(scene, renderer, { ...EVENING, mist: quality.mist });
   const colliders = buildColliders(VILLAGE, level, physics);
   const ctx: VisualsContext = {
     scene,
@@ -42,6 +44,7 @@ export async function buildVillage(
     layout: VILLAGE,
     level,
     env,
+    quality,
     sound: services.playSound,
     onProgress: (p) => EventBus.emit('preload:progress', { progress: 0.2 + 0.5 * p }),
   };

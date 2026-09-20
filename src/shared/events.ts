@@ -13,7 +13,7 @@
  */
 
 import type { InventorySnapshot, ItemId } from './items';
-import type { ExposureLevel, MoonStateName, PlayerStateName, RunResult } from './types';
+import type { ExposureLevel, GameSettings, MoonStateName, PlayerStateName, RunResult } from './types';
 
 /** What the interaction prompt shows. Plain text only — React decides how it looks per device. */
 export interface PromptInfo {
@@ -81,6 +81,8 @@ export interface GameEventMap {
   'ui:touch-stick': { active: boolean; originX: number; originY: number; dx: number; dy: number };
   /** The player went indoors (safe) or came back out. */
   'ui:shelter': { inside: boolean; family: string | null };
+  /** The short guided walk: what to do now, or null when it is over. */
+  'ui:tutorial': { step: number; total: number; title: string; hint: string; done?: boolean } | null;
 
   // ---- React -> engine -------------------------------------------------
   /** Pause is React-owned; the engine only obeys. */
@@ -88,6 +90,10 @@ export interface GameEventMap {
   'game:resume': undefined;
   /** Player-facing camera settings from the pause menu (persisted by React). */
   'game:camera-settings': { sensitivity: number; invertY: boolean };
+  /** Everything else the player can change: volume, quality, controls (persisted by React). */
+  'game:settings': GameSettings;
+  /** Get on with it: end the guided walk now. */
+  'game:skip-tutorial': undefined;
   /** The bag is open: movement input is ignored so arrows and the stick can browse it. */
   'game:inventory-open': { open: boolean };
   /** On-screen buttons for touch devices (and the bag's open/close key). */

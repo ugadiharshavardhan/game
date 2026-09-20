@@ -214,9 +214,16 @@ export class LampPool {
 export class Culler {
   private readonly items: { o: Object3D; c: Vector3; d2: number }[] = [];
   private timer = 0;
+  /** Everything is drawn this much nearer or further, by quality. */
+  private readonly scale: number;
+
+  constructor(scale = 1) {
+    this.scale = scale;
+  }
 
   add(o: Object3D, centre: Vector3, maxDistance: number): void {
-    this.items.push({ o, c: centre.clone(), d2: maxDistance * maxDistance });
+    const d = maxDistance * this.scale;
+    this.items.push({ o, c: centre.clone(), d2: d * d });
   }
 
   update(dt: number, camera: Vector3): void {

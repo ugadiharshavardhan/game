@@ -299,11 +299,16 @@ function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
 function idlePose(t: number, crouch: number): Pose {
   const breath = Math.sin((TAU * t) / 3.5);
   const shift = Math.sin((TAU * t) / 7);
+  // A second, slower sway over the same seven seconds: standing still is never quite still, and
+  // two harmonics of the same period keep the loop seamless.
+  const settle = Math.sin((TAU * t) / 7 + 2.1);
   const legs = crouch ? { thigh: -62, knee: 95 } : { thigh: 0, knee: 0 };
   return {
     turns: [
       ['Hips', 'z', 1.2 * shift * (1 - crouch)],
+      ['Hips', 'y', 1.1 * settle * (1 - crouch)],
       ['Spine', 'x', 1.2 * breath + 1 + 26 * crouch],
+      ['Spine1', 'y', -0.9 * settle * (1 - crouch)],
       ['Spine2', 'x', 0.8 * breath],
       ['Neck', 'x', -0.6 * breath],
       ['Head', 'x', 3 - 18 * crouch],

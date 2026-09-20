@@ -6,34 +6,15 @@
  * every offering is worth 40, every shelter reached under the moon 250, a tidy route up to 1000,
  * and finishing before the night is old up to a few hundred more. Dropping offerings and being
  * overwhelmed cost a little. Nothing here can make a run unwinnable.
+ *
+ * The arithmetic itself lives in `shared/score.ts`, because the server recomputes every score it
+ * is sent from the same stats with the same weights (see `server/`).
  */
-import type { RunResult, RunStats, ScoreBreakdown } from '../../shared/types';
+import { DEFAULT_SCORE_WEIGHTS, scoreRun, type ScoreWeights } from '../../shared/score';
+import type { RunResult, RunStats } from '../../shared/types';
 
-export interface ScoreWeights {
-  perItem: number;
-  perShelter: number;
-  efficiencyMax: number;
-  /** The route a careful player walks, metres: the yardstick for efficiency. */
-  efficientMetres: number;
-  /** Finishing under this many seconds earns the bonus, at `perSecond` a second, up to `timeMax`. */
-  targetSeconds: number;
-  perSecond: number;
-  timeMax: number;
-  perItemLost: number;
-  perOverwhelmed: number;
-}
-
-export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
-  perItem: 40,
-  perShelter: 250,
-  efficiencyMax: 1000,
-  efficientMetres: 900,
-  targetSeconds: 600,
-  perSecond: 3,
-  timeMax: 600,
-  perItemLost: 25,
-  perOverwhelmed: 50,
-};
+export type { ScoreWeights };
+export { DEFAULT_SCORE_WEIGHTS };
 
 export class RunTracker {
   readonly stats: RunStats = {
@@ -86,19 +67,8 @@ export class RunTracker {
 
   /** The finished run: stats, efficiency and the score breakdown. */
   finish(): RunResult {
-    const w = this.weights;
     const stats: RunStats = { ...this.stats, durationMs: Date.now() - this.startedAt };
-    const efficiency = stats.distanceTravelled > 0 ? Math.min(w.efficientMetres / stats.distanceTravelled, 1) : 1;
-    const breakdown: ScoreBreakdown = {
-      items: stats.itemsCollected * w.perItem,
-      shelter: stats.shelterEvents * w.perShelter,
-      efficiency: Math.round(efficiency * w.efficiencyMax),
-      // Capped: a quick run is worth a lot, but never more than gathering the offerings was.
-      timeBonus: Math.min(Math.max(0, Math.round((w.targetSeconds - stats.durationMs / 1000) * w.perSecond)), w.timeMax),
-      penalties: -(stats.itemsLost * w.perItemLost + stats.overwhelmed * w.perOverwhelmed),
-      total: 0,
-    };
-    breakdown.total = breakdown.items + breakdown.shelter + breakdown.efficiency + breakdown.timeBonus + breakdown.penalties;
+    const { breakdown, efficiency } = scoreRun(stats, this.weights);
     return { stats, breakdown, efficiency, completedAt: Date.now() };
   }
 }

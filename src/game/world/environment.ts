@@ -45,6 +45,8 @@ export interface EnvironmentOptions {
   /** Half-width of the sun's shadow frustum, metres. Larger = softer, cheaper-looking shadows. */
   shadowExtent: number;
   shadowMapSize: number;
+  /** The low drift of mist: two more transparent sheets, which a phone can do without. */
+  mist: boolean;
 }
 
 /** One moment of sky, as the lighting controller describes it. */
@@ -103,6 +105,7 @@ export const EVENING: EnvironmentOptions = {
   fogDensity: 0.0115,
   shadowExtent: 26,
   shadowMapSize: 2048,
+  mist: true,
 };
 
 /** Radius of the night sky's dome — inside the camera's far plane (500 m). */
@@ -172,7 +175,7 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
   heavens.name = 'Heavens';
   const stars = starField();
   const moon = moonDisc();
-  const mist = mistLayers();
+  const mist = o.mist ? mistLayers() : new Group();
   heavens.add(stars, moon, mist);
   heavens.visible = false;
   scene.add(heavens);
@@ -231,7 +234,7 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
       for (const c of moon.children) ((c as Mesh).material as MeshBasicMaterial).opacity = look.moonOpacity * 0.5;
       (stars.material as PointsMaterial).opacity = look.starOpacity;
       for (const m of mist.children) ((m as Mesh).material as MeshBasicMaterial).opacity = look.mistOpacity;
-      mist.visible = look.mistOpacity > 0.005;
+      mist.visible = mist.children.length > 0 && look.mistOpacity > 0.005;
       heavens.visible = look.starOpacity > 0.01 || look.moonOpacity > 0.01 || mist.visible;
     },
 

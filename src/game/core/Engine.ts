@@ -27,13 +27,33 @@ import { Player } from '../player/Player';
 import { buildTestbed } from '../world/Testbed';
 import type { World } from '../world/World';
 import { AudioBank } from './AudioBank';
+import type { RemotePeer } from '../../shared/multiplayer';
+import type { QualityLevel } from '../../shared/types';
+import { DEFAULT_MOON_CONFIG } from '../moon/MoonState';
+import { GhostPlayers } from '../multiplayer/GhostPlayers';
+import type { PeerLink } from '../multiplayer/PeerLink';
+import { buildProceduralClips } from '../player/proceduralClips';
+import { Tutorial, TUTORIAL_MOON } from '../tutorial/Tutorial';
 import { Input } from './Input';
 import { Physics } from './Physics';
+import { profileFor, type QualityProfile } from './quality';
 
 const BASE = import.meta.env.BASE_URL;
 /** Bloom strength: restrained by day, a touch more once the only light is fire and moon. */
 const DAY_BLOOM = 0.2;
 const NIGHT_BLOOM = 0.32;
+
+/** What the app tells the engine about the run it is starting. */
+export interface GameOptions {
+  /** How hard this device may be worked ('auto' asks the device). */
+  quality?: QualityLevel;
+  /** A team's shared village: everyone's moon has this seed and is this far into its cycle. */
+  session?: { seed: number; elapsed: number } | null;
+  /** Teammates to draw, and somewhere to put this player's position. Absent when playing alone. */
+  link?: PeerLink | null;
+  /** The short guided walk instead of a full run. */
+  tutorial?: boolean;
+}
 
 /**
  * Owns the renderer, the loop and every system. Created on Play, disposed on quit.
@@ -56,22 +76,28 @@ export class Engine {
   private player: Player | null = null;
   private cameraRig: ThirdPersonCamera | null = null;
   private gameplay: Gameplay | null = null;
+  private ghosts: GhostPlayers | null = null;
+  private tutorial: Tutorial | null = null;
+  /** Dev-only stand-ins for teammates (devtools.ts); empty in a real run. */
+  private readonly fakePeers: RemotePeer[] = [];
+  private readonly options: GameOptions;
+  readonly quality: QualityProfile;
   private paused = false;
   private pendingCameraSettings: CameraUserSettings | null = null;
   private disposed = false;
   private readonly unsubscribers: Array<() => void> = [];
   private readonly parent: HTMLElement;
 
-  constructor(
-    parent: HTMLElement,
-  ) {
+  constructor(parent: HTMLElement, options: GameOptions = {}) {
     this.parent = parent;
-    this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.options = options;
+    this.quality = profileFor(options.quality);
+    this.renderer = new WebGLRenderer({ antialias: this.quality.msaa === 0, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.74;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.shadowMap.type = PCFShadowMap;
     // The composer renders several passes a frame; count the whole frame, not the last pass.
     this.renderer.info.autoReset = false;
@@ -101,13 +127,18 @@ export class Engine {
     const params = new URLSearchParams(location.search);
     const physics = this.physics;
     const sounds = new SoundFx(this.bank);
-    this.ambience = new Ambience(this.bank);
-    const seed = Number(params.get('seed')) || Date.now() % 100000;
-    const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed));
+    this.ambience = new Ambience(this.bank, this.quality.audioRate);
+    // A team shares one moon: the session's seed, wound forward to wherever the night has got to.
+    const session = this.options.session ?? null;
+    const seed = session?.seed ?? (Number(params.get('seed')) || Date.now() % 100000);
+    // The guided walk runs a night in miniature, so a whole moonrise fits inside two minutes.
+    const moonConfig = this.options.tutorial ? TUTORIAL_MOON : DEFAULT_MOON_CONFIG;
+    const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed, moonConfig));
+    if (session?.elapsed) gameplay.moon.windForward(session.elapsed);
     const buildWorld = async (): Promise<World> => {
       if (params.get('scene') === 'testbed') return buildTestbed(this.scene, this.renderer, physics);
       const { buildVillage } = await import('../world/village/Village');
-      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services);
+      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality);
     };
     const [world, gltf] = await Promise.all([
       buildWorld(),
@@ -119,9 +150,19 @@ export class Engine {
       return;
     }
     this.world = world;
+    // The devotee carries no animation of his own: his clips are made here, once, and the
+    // teammates' ghosts play the very same ones.
+    const clips = gltf.animations.length
+      ? gltf.animations
+      : buildProceduralClips(gltf.scene, {
+          slow: DEFAULT_PLAYER_CONFIG.slowWalkSpeed,
+          walk: DEFAULT_PLAYER_CONFIG.walkSpeed,
+          run: DEFAULT_PLAYER_CONFIG.runSpeed,
+          crouch: DEFAULT_PLAYER_CONFIG.crouchSpeed,
+        });
     this.player = new Player(
       gltf.scene,
-      gltf.animations,
+      clips,
       this.scene,
       this.physics,
       this.input,
@@ -137,23 +178,40 @@ export class Engine {
       if (!this.disposed) EventBus.emit('ui:item-icons', { icons });
     });
 
+    // Ghosts are always ready, even alone: an empty list costs nothing, and the developer tools
+    // can put a stand-in teammate in the lane to look at without a second player.
+    const link: PeerLink = {
+      peers: () => (this.options.link ? [...this.options.link.peers(), ...this.fakePeers] : this.fakePeers),
+      send: (state) => this.options.link?.send(state),
+      onLeave: (listener) => this.options.link?.onLeave(listener) ?? (() => {}),
+    };
+    this.ghosts = new GhostPlayers(this.scene, gltf.scene, clips, DEFAULT_PLAYER_CONFIG, this.camera, link, this.quality.ghosts);
+    if (this.options.tutorial) {
+      this.tutorial = new Tutorial(gameplay, world);
+      this.unsubscribers.push(EventBus.on('game:skip-tutorial', () => this.tutorial?.skip()));
+    }
+
     const size = this.renderer.getSize(new Vector2());
     // Render into a multisampled target: without it, post-processing silently drops the
     // renderer's antialiasing — and alpha-to-coverage foliage needs MSAA to smooth its edges.
     this.composer = new EffectComposer(
       this.renderer,
-      new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: this.renderer.capabilities.isWebGL2 ? 4 : 0 }),
+      new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: this.renderer.capabilities.isWebGL2 ? this.quality.msaa : 0 }),
     );
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     // High threshold: lamps, flames and the sun's disc bloom; lit walls and sky do not.
-    this.bloom = new UnrealBloomPass(size, DAY_BLOOM, 0.55, 1.45);
-    this.composer.addPass(this.bloom);
+    if (this.quality.bloom) {
+      this.bloom = new UnrealBloomPass(size, DAY_BLOOM, 0.55, 1.45);
+      this.composer.addPass(this.bloom);
+    }
     this.composer.addPass(new OutputPass());
     this.resize();
 
     this.unsubscribers.push(
       EventBus.on('game:pause', () => this.setPaused(true)),
       EventBus.on('game:resume', () => this.setPaused(false)),
+      // Volume can change mid-run; the rest of the settings are read when the engine starts.
+      EventBus.on('game:settings', ({ volume }) => this.bank.setVolume(volume)),
     );
     // Audio may only start inside a user gesture.
     const unlock = () => this.bank.unlock();
@@ -183,6 +241,8 @@ export class Engine {
     this.player?.dispose();
     this.world?.dispose();
     this.physics?.dispose();
+    this.tutorial?.dispose();
+    this.ghosts?.dispose();
     this.composer?.dispose();
     this.ambience?.dispose();
     this.bank.dispose();
@@ -214,6 +274,18 @@ export class Engine {
       // A little more glow off the diyas once the sky is dark — a little, not a haze.
       if (this.bloom) this.bloom.strength = DAY_BLOOM + (NIGHT_BLOOM - DAY_BLOOM) * moon.moonlight;
       this.input.endFrame();
+      // Teammates: tell them where we are, then draw where they are.
+      this.options.link?.send({
+        x: this.player.feet.x,
+        y: this.player.feet.y,
+        z: this.player.feet.z,
+        yaw: this.player.yaw,
+        state: this.player.state.value,
+        indoors: this.world?.shelter?.isSafe ?? false,
+        given: this.gameplay.inventory.snapshot().stacks.length,
+      });
+      this.ghosts?.update(dt);
+      this.tutorial?.update(dt);
     }
     this.composer.render();
   }
@@ -225,6 +297,7 @@ export class Engine {
       scene: this.scene,
       camera: this.camera,
       input: this.input,
+      fakePeers: this.fakePeers,
       physics: this.physics as Physics,
       player: this.player as Player,
       cameraRig: this.cameraRig as ThirdPersonCamera,

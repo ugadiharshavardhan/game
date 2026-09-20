@@ -25,3 +25,6 @@ dist-ssr
 
 # Blender backups
 *.blend1
+
+# Server runtime state
+server/data/

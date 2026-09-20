@@ -84,6 +84,23 @@ export class MoonManager {
     this.set(state);
   }
 
+  /**
+   * Winds the cycle on as if it had been running for `seconds` — how a player who joins a team's
+   * village an hour late gets the same moon, in the same place, as everyone already in it. Done
+   * in one step per state rather than in frames, so a long night costs nothing to catch up on.
+   */
+  windForward(seconds: number): void {
+    let left = Math.max(0, seconds);
+    let guard = 0;
+    while (left >= this.length - this.elapsed && guard++ < 10000) {
+      left -= this.length - this.elapsed;
+      this.elapsed = 0;
+      this.advance();
+    }
+    this.elapsed += left;
+    this.progress = Math.min(this.elapsed / this.length, 1);
+  }
+
   private advance(): void {
     const next = MOON_STATES[(MOON_STATES.indexOf(this.state) + 1) % MOON_STATES.length];
     if (next === 'safe') this.cycle++;

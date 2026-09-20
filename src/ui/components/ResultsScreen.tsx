@@ -1,23 +1,47 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { PlayerProfile, TeamState } from '../../shared/multiplayer';
 import type { LeaderboardEntry, RunResult } from '../../shared/types';
 import { formatDuration, saveScore } from '../leaderboard';
+import { Boards } from '../menu/Boards';
+import { services, useObservable } from '../services';
 
 interface ResultsScreenProps {
   result: RunResult;
+  profile: PlayerProfile | null;
+  team: TeamState | null;
+  connected: boolean;
   onPlayAgain: () => void;
   onMainMenu: () => void;
 }
 
 /**
- * The run is over: what happened, what it scored, and what to do next. The numbers are the ones
- * the player felt — offerings gathered, doors reached in time, how far they walked, how long it
- * took — so the total reads as a story rather than a formula.
+ * The run is over: what happened, what it scored, and what to do next.
+ *
+ * The number shown is the referee's, not this browser's — the client's own arithmetic is only a
+ * placeholder until the run comes back accepted, which is what stops a modified client writing
+ * its own leaderboard entry. Alone, that is the local board; in a team, it is the player's score,
+ * their team's total, and where the team stands.
  */
-export function ResultsScreen({ result, onPlayAgain, onMainMenu }: ResultsScreenProps) {
-  const { stats, breakdown } = result;
-  // Saved once, on the way in.
-  const saved = useMemo(() => saveScore({ score: breakdown.total, durationMs: stats.durationMs, playedAt: result.completedAt }), [breakdown.total, stats.durationMs, result.completedAt]);
-  const [showBoard, setShowBoard] = useState(false);
+export function ResultsScreen({ result, profile, team, connected, onPlayAgain, onMainMenu }: ResultsScreenProps) {
+  const { scores } = services();
+  const accepted = useObservable(scores.accepted);
+  const rejected = useObservable(scores.rejected);
+  const { stats } = result;
+  const breakdown = accepted?.breakdown ?? result.breakdown;
+  const [view, setView] = useState<'result' | 'players' | 'teams'>('result');
+
+  // The device's own list is kept whatever the network does, so a solo player always has one.
+  const local = useMemo(
+    () => saveScore({ score: result.breakdown.total, durationMs: stats.durationMs, playedAt: result.completedAt }),
+    [result.breakdown.total, stats.durationMs, result.completedAt],
+  );
+
+  useEffect(() => {
+    if (view !== 'result') return;
+    // Nothing to do; the boards refresh themselves when opened.
+  }, [view]);
+
+  if (view !== 'result') return <Boards initial={view === 'teams' ? 'teams' : 'individual'} onBack={() => setView('result')} />;
 
   const rows: [string, number][] = [
     ['Items', breakdown.items],
@@ -43,41 +67,64 @@ export function ResultsScreen({ result, onPlayAgain, onMainMenu }: ResultsScreen
         <h1 className="mt-3 font-display text-3xl text-lamp-200 sm:text-4xl">
           Puja complete <span aria-hidden>🙏</span>
         </h1>
-        <p className="mt-2 text-sm text-lamp-200/70">Every offering is before Bappa. Ganpati Bappa Morya!</p>
+        <p className="mt-2 text-sm text-lamp-200/70">
+          {profile ? `${profile.displayName} — every offering is before Bappa.` : 'Every offering is before Bappa.'} Ganpati Bappa Morya!
+        </p>
 
-        {showBoard ? (
-          <Board scores={saved.scores} rank={saved.rank} />
-        ) : (
-          <>
-            <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-2 text-left text-xs">
-              {facts.map(([k, v]) => (
-                <div key={k} className="flex justify-between border-b border-night-800/80 pb-1.5">
-                  <dt className="text-dusk-400">{k}</dt>
-                  <dd className="tabular-nums text-lamp-200">{v}</dd>
-                </div>
+        <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-2 text-left text-xs">
+          {facts.map(([k, v]) => (
+            <div key={k} className="flex justify-between border-b border-night-800/80 pb-1.5">
+              <dt className="text-dusk-400">{k}</dt>
+              <dd className="tabular-nums text-lamp-200">{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <table className="mt-7 w-full text-left text-sm">
+          <tbody>
+            {rows.map(([label, value]) => (
+              <tr key={label} className="border-b border-night-800/60">
+                <th scope="row" className="py-1.5 text-[11px] font-normal uppercase tracking-[0.2em] text-dusk-400">
+                  {label}
+                </th>
+                <td className={`py-1.5 text-right tabular-nums ${value < 0 ? 'text-[#d98a7a]' : 'text-lamp-200'}`}>{value}</td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row" className="pt-3 font-display text-base text-lamp-200">
+                Your score
+              </th>
+              <td className="pt-3 text-right font-display text-2xl tabular-nums text-lamp-400">{breakdown.total}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {accepted && (
+          <p className="mt-2 text-[11px] text-dusk-400">
+            {accepted.personalBest ? 'A new personal best.' : `Your best is still ${accepted.bestScore}.`}
+            {accepted.individualRank ? ` · #${accepted.individualRank} on the players’ board.` : ''}
+          </p>
+        )}
+        {!accepted && !rejected && <p className="mt-2 text-[11px] text-dusk-400">{connected ? 'Confirming your score…' : 'Offline — kept on this device.'}</p>}
+        {rejected && <p className="mt-2 text-[11px] text-[#d98a7a]">{rejected}</p>}
+        {!team && local.rank > 0 && <p className="mt-1 text-[11px] text-dusk-400">Best of {local.scores.length} on this device: #{local.rank}</p>}
+
+        {team && (
+          <section className="mt-6 rounded-2xl border border-lamp-400/20 bg-night-900/50 p-4 text-left">
+            <div className="flex items-baseline justify-between">
+              <p className="font-display text-lg text-lamp-200">{team.name}</p>
+              <p className="font-display text-xl tabular-nums text-lamp-400">{accepted?.teamScore ?? team.teamScore}</p>
+            </div>
+            <ul className="mt-3 space-y-1 text-xs">
+              {team.members.map((m) => (
+                <li key={m.playerId} className="flex justify-between gap-3">
+                  <span className={m.playerId === profile?.playerId ? 'text-lamp-200' : 'text-dusk-400'}>{m.displayName}</span>
+                  <span className="tabular-nums text-lamp-200/80">{m.score ?? '—'}</span>
+                </li>
               ))}
-            </dl>
-
-            <table className="mt-7 w-full text-left text-sm">
-              <tbody>
-                {rows.map(([label, value]) => (
-                  <tr key={label} className="border-b border-night-800/60">
-                    <th scope="row" className="py-1.5 font-normal uppercase tracking-[0.2em] text-[11px] text-dusk-400">
-                      {label}
-                    </th>
-                    <td className={`py-1.5 text-right tabular-nums ${value < 0 ? 'text-[#d98a7a]' : 'text-lamp-200'}`}>{value}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <th scope="row" className="pt-3 font-display text-base text-lamp-200">
-                    Total
-                  </th>
-                  <td className="pt-3 text-right font-display text-2xl tabular-nums text-lamp-400">{breakdown.total}</td>
-                </tr>
-              </tbody>
-            </table>
-            {saved.rank > 0 && <p className="mt-3 text-xs text-dusk-400">Your best-of-{saved.scores.length} rank on this device: #{saved.rank}</p>}
-          </>
+            </ul>
+            {accepted?.teamRank && <p className="mt-3 text-[11px] text-dusk-400">Your team is #{accepted.teamRank} on the team board.</p>}
+          </section>
         )}
 
         <div className="mt-8 flex flex-col gap-3">
@@ -90,19 +137,14 @@ export function ResultsScreen({ result, onPlayAgain, onMainMenu }: ResultsScreen
             Play again
           </button>
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setShowBoard((v) => !v)}
-              className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-lamp-200/90 transition hover:border-lamp-400 active:scale-[0.98]"
-            >
-              {showBoard ? 'Back to results' : 'Leaderboard'}
+            <button type="button" onClick={() => setView('players')} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-lamp-200/90 transition hover:border-lamp-400 active:scale-[0.98]">
+              Players
             </button>
-            <button
-              type="button"
-              onClick={onMainMenu}
-              className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-dusk-400 transition hover:border-dusk-400 hover:text-lamp-200 active:scale-[0.98]"
-            >
-              Main menu
+            <button type="button" onClick={() => setView('teams')} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-lamp-200/90 transition hover:border-lamp-400 active:scale-[0.98]">
+              Teams
+            </button>
+            <button type="button" onClick={onMainMenu} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-dusk-400 transition hover:border-dusk-400 hover:text-lamp-200 active:scale-[0.98]">
+              {team ? 'Lobby' : 'Menu'}
             </button>
           </div>
         </div>
@@ -111,27 +153,4 @@ export function ResultsScreen({ result, onPlayAgain, onMainMenu }: ResultsScreen
   );
 }
 
-function Board({ scores, rank }: { scores: LeaderboardEntry[]; rank: number }) {
-  return (
-    <section className="mt-7 text-left">
-      <h2 className="text-[10px] uppercase tracking-[0.3em] text-dusk-400">Best on this device</h2>
-      <ol className="mt-3 space-y-1.5">
-        {scores.map((s, i) => (
-          <li
-            key={`${s.playedAt}-${i}`}
-            className={`flex items-baseline justify-between rounded-lg px-3 py-2 text-sm ${i + 1 === rank ? 'bg-lamp-400/15 text-lamp-200' : 'bg-night-900/60 text-lamp-200/75'}`}
-          >
-            <span className="tabular-nums text-dusk-400">#{i + 1}</span>
-            <span className="font-display text-lg tabular-nums">{s.score}</span>
-            <span className="text-xs tabular-nums text-dusk-400">
-              {formatDuration(s.durationMs)} · {new Date(s.playedAt).toLocaleDateString()}
-            </span>
-          </li>
-        ))}
-      </ol>
-      <p className="mt-4 text-[11px] leading-relaxed text-dusk-400">
-        Scores are kept in this browser. A shared leaderboard arrives with the backend.
-      </p>
-    </section>
-  );
-}
+export type { LeaderboardEntry };

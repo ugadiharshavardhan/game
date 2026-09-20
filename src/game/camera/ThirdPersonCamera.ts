@@ -123,6 +123,9 @@ export class ThirdPersonCamera {
   private shotVia: Vector3[] = [];
   private readonly shotLook = new Vector3();
   private readonly shotLookVel = { x: { value: 0 }, y: { value: 0 }, z: { value: 0 } };
+  /** The handheld drift: a few centimetres, always moving, never noticed. */
+  private swayTime = Math.random() * 100;
+  private readonly sway = new Vector3();
   private readonly rigPos = new Vector3();
   private readonly rigQuat = new Quaternion();
   private rigFov = 55;
@@ -218,7 +221,26 @@ export class ThirdPersonCamera {
     this.blendGait(dt);
     this.followTarget(dt);
     this.place(dt);
+    this.breathe(dt);
     this.applyShot(dt);
+  }
+
+  /**
+   * A camera held by a person rather than bolted to a pole: a few centimetres of drift, a little
+   * more of it when running, and none of it during a held shot. Small enough that it is felt and
+   * not seen — the amplitude is under two centimetres at a walk.
+   */
+  private breathe(dt: number): void {
+    this.swayTime += dt;
+    const t = this.swayTime;
+    const amount = 0.012 + 0.03 * this.gait.run;
+    this.sway.set(
+      Math.sin(t * 0.9) * amount + Math.sin(t * 2.3) * amount * 0.35,
+      Math.sin(t * 1.27 + 1.1) * amount * 0.8,
+      Math.cos(t * 0.73 + 0.4) * amount * 0.5,
+    );
+    this.camera.position.add(this.sway);
+    this.camera.updateMatrixWorld();
   }
 
   // ---- shots -----------------------------------------------------------------------------------

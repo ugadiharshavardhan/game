@@ -173,3 +173,34 @@ describe('ExposureSystem', () => {
     expect(e.value).toBe(0);
   });
 });
+
+describe('a team’s shared moon', () => {
+  it('winds forward to exactly where the night already is', () => {
+    const late = new MoonManager(DEFAULT_MOON_CONFIG, 42);
+    late.windForward(400);
+    const early = new MoonManager(DEFAULT_MOON_CONFIG, 42);
+    run(early, 400);
+    expect(late.state).toBe(early.state);
+    expect(late.progress).toBeCloseTo(early.progress, 2);
+    expect(late.moonlight).toBeCloseTo(early.moonlight, 2);
+    expect(late.cycle).toBe(early.cycle);
+  });
+
+  it('is the same moon for everyone in the session, and a different one for another team', () => {
+    const a = new MoonManager(DEFAULT_MOON_CONFIG, 7);
+    const b = new MoonManager(DEFAULT_MOON_CONFIG, 7);
+    const other = new MoonManager(DEFAULT_MOON_CONFIG, 8);
+    b.windForward(120);
+    run(a, 120);
+    other.windForward(120);
+    expect(a.state).toBe(b.state);
+    expect(a.moonlight).toBeCloseTo(b.moonlight, 3);
+    let differs = false;
+    for (let t = 0; t < 900; t += 5) {
+      a.update(5);
+      other.update(5);
+      if (a.state !== other.state) differs = true;
+    }
+    expect(differs, 'two teams are not watching the same sky').toBe(true);
+  });
+});
