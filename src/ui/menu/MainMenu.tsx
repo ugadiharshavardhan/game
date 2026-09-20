@@ -146,7 +146,12 @@ function Secondary({ onClick, children }: { onClick: () => void; children: React
 function Backdrop() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="menu-drift absolute inset-0 bg-[url('/assets/menu/village-evening.jpg')] bg-cover bg-[position:32%_center]" />
+      {/* Through BASE_URL, so the menu still finds its village when the game is served from a
+          sub-path (GitHub Pages serves a project at /repo-name/). */}
+      <div
+        className="menu-drift absolute inset-0 bg-cover bg-[position:32%_center]"
+        style={{ backgroundImage: `url(${import.meta.env.BASE_URL}assets/menu/village-evening.jpg)` }}
+      />
       {/* A halo around the moon that is already in the photograph, rising very slowly. */}
       <div className="menu-moonrise absolute left-[74%] top-[14%] h-20 w-20 rounded-full bg-[radial-gradient(circle,rgba(255,252,238,0.55)_0%,rgba(226,232,255,0.28)_40%,rgba(150,175,235,0)_72%)]" />
       {/* Warm lamplight breathing at the edges of the frame. */}

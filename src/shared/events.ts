@@ -81,6 +81,8 @@ export interface GameEventMap {
   'ui:touch-stick': { active: boolean; originX: number; originY: number; dx: number; dy: number };
   /** The player went indoors (safe) or came back out. */
   'ui:shelter': { inside: boolean; family: string | null };
+  /** Frame rate and draw calls, twice a second, when the page was opened with ?perf=1. */
+  'ui:perf': { fps: number; calls: number; triangles: number; quality: string; memoryMb: number | null };
   /** The short guided walk: what to do now, or null when it is over. */
   'ui:tutorial': { step: number; total: number; title: string; hint: string; done?: boolean } | null;
 

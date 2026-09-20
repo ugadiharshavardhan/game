@@ -22,6 +22,47 @@ import { type MaterialKit, type MatKey, TILE } from './materials';
 
 // ---- Batch ------------------------------------------------------------------------------------
 
+/**
+ * Where a wall meets the ground, a little shade.
+ *
+ * Real contact shadows would need another light or a bake; this is the poor relation — the bottom
+ * few centimetres of every solid thing have their vertex colour taken down by a sixth, which is
+ * enough for a house to look *set into* the lane rather than laid on top of it. It costs nothing
+ * at runtime because it is in the vertex colours, and nothing at build time but one pass over the
+ * positions.
+ *
+ * Lights, flames and anything painted flat on the ground are left alone: darkening a rangoli or a
+ * lamp's own glass would be a bug, not a bake.
+ */
+const NO_CONTACT: ReadonlySet<string> = new Set(['flame', 'glow', 'lamplit', 'interior', 'water']);
+/** Shading reaches this high, in metres, and takes the colour down by this much at its foot. */
+const CONTACT_HEIGHT = 0.28;
+const CONTACT_DEPTH = 0.17;
+
+function bakeContact(geometry: BufferGeometry, key: MatKey): void {
+  if (NO_CONTACT.has(key)) return;
+  const position = geometry.getAttribute('position');
+  const colour = geometry.getAttribute('color');
+  if (!position || !colour) return;
+  // Something lying flat on the ground (a decal, a paved patch) is all "contact" and must not be
+  // touched; only things that stand up get shaded where they meet the earth.
+  let low = Infinity;
+  let high = -Infinity;
+  for (let i = 0; i < position.count; i++) {
+    const y = position.getY(i);
+    if (y < low) low = y;
+    if (y > high) high = y;
+  }
+  if (!Number.isFinite(low) || high - low < CONTACT_HEIGHT * 2) return;
+  for (let i = 0; i < position.count; i++) {
+    const t = (position.getY(i) - low) / CONTACT_HEIGHT;
+    if (t >= 1) continue;
+    const shade = 1 - CONTACT_DEPTH * (1 - t) * (1 - t);
+    colour.setXYZ(i, colour.getX(i) * shade, colour.getY(i) * shade, colour.getZ(i) * shade);
+  }
+  colour.needsUpdate = true;
+}
+
 const KEEP = ['position', 'normal', 'uv', 'color'];
 
 /**
@@ -74,13 +115,14 @@ export class Batch {
   }
 
   /** Merge into one Mesh per material. */
-  build(kit: MaterialKit, opts: { cast?: boolean; receive?: boolean; name?: string; noShadow?: MatKey[] } = {}): Group {
+  build(kit: MaterialKit, opts: { cast?: boolean; receive?: boolean; name?: string; noShadow?: MatKey[]; contact?: boolean } = {}): Group {
     const group = new Group();
     group.name = opts.name ?? 'batch';
     for (const [key, list] of this.parts) {
       const merged = mergeGeometries(list, false);
       for (const g of list) g.dispose();
       if (!merged) continue;
+      if (opts.contact !== false) bakeContact(merged, key);
       merged.computeBoundingSphere();
       const mesh = new Mesh(merged, kit.get(key));
       mesh.name = `${group.name}:${key}`;

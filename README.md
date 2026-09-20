@@ -14,6 +14,8 @@ step inside a house and wait.
 | [docs/SYSTEMS.md](docs/SYSTEMS.md) | How the run works: puja items, interaction, the bag, safe houses, the moon cycle, exposure, the closing puja and the score |
 | [docs/LEVEL_DESIGN.md](docs/LEVEL_DESIGN.md) | The village map, areas, shelter rules, puja item spots with measured distances |
 | [docs/ART_BRIEF.md](docs/ART_BRIEF.md) | Visual direction, cultural guidance, the art toolkit, per-module specs |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Quality profiles, measured costs, the heaviest assets, the optimisation checklist |
+| [docs/RELEASE.md](docs/RELEASE.md) | Build, serve, deploy, and the release checklist |
 
 ## Status
 
@@ -32,22 +34,54 @@ the score. See [docs/SYSTEMS.md](docs/SYSTEMS.md).
 The devotee's animations are made in code for his skeleton (`src/game/player/proceduralClips.ts`).
 Mixamo clips baked into the .glb by `tools/blender/` (below) take over automatically when present.
 
+New players get a two-minute playable tutorial (from **How to play**): walk, collect a flower,
+watch the bag fill, find a lit door, go in, watch a moonrise through the window, and come out
+again. Every step ends on something the player did.
+
 Controls: WASD / left stick move · mouse / right stick look · Shift run · Ctrl slow walk ·
 C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
 On touch: a thumb joystick on the left, drag on the right to look, pinch zooms, and large
 COLLECT / SNEAK / bag / pause buttons; keyboard hints are hidden and a portrait phone is asked,
 once and quietly, to turn sideways.
 
+## Playing together
+
+A player types a name — no account, no password, no email — and gets an id that tells two Harshas
+apart. From the menu they can **Create team** (which prints a code like `MOON-7K4P` to share) or
+**Join team** with a friend's code. When the host starts, everyone walks into *the same village
+with the same moon*, sees their teammates as translucent ghosts with name tags, and plays their
+own puja: their own bag, their own exposure, their own shelter, their own score. Teams have their
+own leaderboard, kept separate from the players' one.
+
+Scores are recomputed on the server from the run's statistics before they reach a board, so a
+modified client can change what it shows and not what is recorded.
+
+```bash
+npm run server     # the session server: teams, lobbies, ghosts, boards — and serves dist/
+```
+
+With no server running, teams fall back to the tabs of one browser, which is enough to see the
+whole flow (and to test it). See [docs/RELEASE.md](docs/RELEASE.md) for deployment.
+
 ## Commands
 
 ```bash
 npm run dev        # dev server, also exposed on the LAN for phone testing
-npm test           # vitest: camera, level design, playthroughs, shelters, interaction, bag, moon
+npm test           # vitest: camera, level design, playthroughs, shelters, interaction, bag, moon,
+                   #         lighting, audio, the puja sequence, and the multiplayer rules
 npm run typecheck  # tsc -b, no emit
 npm run lint       # oxlint
 npm run build      # typecheck + production build
-npm run preview    # serve the production build
+npm run server     # session server on :8787 (serves dist/ too)
+npm run serve      # build, then serve
+npm run preview    # serve the production build without the sessions
 ```
+
+Deployment is prepared four ways — a `Dockerfile`, `fly.toml`, `render.yaml`, and a GitHub Pages
+workflow for the static build. See [docs/RELEASE.md](docs/RELEASE.md).
+
+Open any build with **`?perf=1`** for a small overlay showing frame rate, draw calls, triangles,
+the quality profile and heap — that is how the game gets measured on a real phone.
 
 URL options (dev and prod): `?view=greybox` shows the village exactly as it collides;
 `?scene=testbed` is the character test ground; `?only=ground,houses,temple` builds only
@@ -97,14 +131,18 @@ tools/level/              level map and distance report generators
 public/assets/            runtime assets: models/, textures/ (CC0 ambientCG), audio/ (CC0 Kenney)
 src/
 ├── App.tsx               app-level state machine: menu ⇄ playing ⇄ results
-├── ui/                   ── REACT LAYER ── MainMenu, GameCanvas, Hud, MoonUI, InteractionPrompt,
-│                         InventoryUI, TouchControls, PauseOverlay, ResultsScreen, leaderboard
+├── ui/                   ── REACT LAYER ── GameCanvas, Hud, MoonUI, InteractionPrompt,
+│   ├── menu/             the menu: name, teams, lobby, boards, how to play, puja list, settings
+│   └── …                 InventoryUI, TouchControls, TutorialCard, PauseOverlay, ResultsScreen
+├── net/                  ── MULTIPLAYER ── Authority (the rules), transports (socket / same
+│                         device), and one service per job: profile, team, lobby, session, sync,
+│                         score, leaderboard
 ├── shared/               ── THE CONTRACT ── typed events, EventBus, the item catalogue
 └── game/                 ── 3D ENGINE ── (lazy-loaded)
     ├── index.ts          create/destroy the engine; the only entry point
     ├── Gameplay.ts       the run: bag, moon, exposure, interaction, shelter, score, in frame order
     ├── core/             Engine (renderer, loop), Input, Physics (Rapier, layers), AudioBank,
-    │                     devtools (dev only)
+    │                     quality (what this device may be asked for), devtools (dev only)
     ├── audio/            SoundFx — the synthesised one-shots; Ambience — the five looping beds
     ├── interaction/      IInteractable, InteractionSystem (+ tests)
     ├── inventory/        InventorySystem, InventoryItem (+ tests)
@@ -113,6 +151,8 @@ src/
     ├── moon/             MoonState, MoonManager, MoonLightingController, MoonAudioController,
     │                     ExposureSystem (+ tests)
     ├── run/              RunTracker — the run's statistics and its score
+    ├── multiplayer/      GhostPlayers — teammates, translucent, animated, uncollidable
+    ├── tutorial/         Tutorial — the two-minute guided walk
     ├── config/           playerConfig.ts — every tunable player number
     ├── camera/           ThirdPersonCamera (with interior shots), CameraConfig, cameraMath (+ tests)
     ├── player/           Player, PlayerController, PlayerState, PlayerAnimation, proceduralClips,

@@ -9,6 +9,7 @@ import { Hud } from './ui/components/Hud';
 import { InventoryUI } from './ui/components/InventoryUI';
 import { type CameraSettings, PauseOverlay } from './ui/components/PauseOverlay';
 import { ResultsScreen } from './ui/components/ResultsScreen';
+import { PerfOverlay } from './ui/components/PerfOverlay';
 import { TouchControls } from './ui/components/TouchControls';
 import { TutorialCard } from './ui/components/TutorialCard';
 import { useGameEvent } from './ui/hooks/useGameEvent';
@@ -220,7 +221,10 @@ export default function App() {
     <main className="relative h-full w-full overflow-hidden bg-night-950">
       {appState === 'playing' && <GameCanvas key={runKey} options={options} />}
 
-      {appState === 'playing' && options.tutorial && !paused && <TutorialCard onPlay={() => startRun({})} onMenu={quitToMenu} />}
+      {appState === 'playing' && options.tutorial && !paused && <TutorialCard onPlay={() => startRun({ quality: settings.quality })} onMenu={quitToMenu} />}
+
+      {/* ?perf=1 — frame rate and draw calls, for testing on a real device. */}
+      {appState === 'playing' && <PerfOverlay />}
 
       {appState === 'playing' && !paused && (
         <>

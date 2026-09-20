@@ -126,6 +126,7 @@ export class ThirdPersonCamera {
   /** The handheld drift: a few centimetres, always moving, never noticed. */
   private swayTime = Math.random() * 100;
   private readonly sway = new Vector3();
+  private readonly swayNext = new Vector3();
   private readonly rigPos = new Vector3();
   private readonly rigQuat = new Quaternion();
   private rigFov = 55;
@@ -220,8 +221,10 @@ export class ThirdPersonCamera {
     this.zoom(dt);
     this.blendGait(dt);
     this.followTarget(dt);
-    this.place(dt);
+    // The handheld drift moves the point the camera is hung from, *before* the collision sweep,
+    // so a breathing camera can never breathe its way into a wall.
     this.breathe(dt);
+    this.place(dt);
     this.applyShot(dt);
   }
 
@@ -234,13 +237,14 @@ export class ThirdPersonCamera {
     this.swayTime += dt;
     const t = this.swayTime;
     const amount = 0.012 + 0.03 * this.gait.run;
-    this.sway.set(
+    this.swayNext.set(
       Math.sin(t * 0.9) * amount + Math.sin(t * 2.3) * amount * 0.35,
       Math.sin(t * 1.27 + 1.1) * amount * 0.8,
       Math.cos(t * 0.73 + 0.4) * amount * 0.5,
     );
-    this.camera.position.add(this.sway);
-    this.camera.updateMatrixWorld();
+    // Only the change is applied, so the drift never accumulates into a lean.
+    this.follow.add(this.swayNext).sub(this.sway);
+    this.sway.copy(this.swayNext);
   }
 
   // ---- shots -----------------------------------------------------------------------------------

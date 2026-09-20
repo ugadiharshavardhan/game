@@ -1,0 +1,49 @@
+# Publishes the game to GitHub Pages on every push to main.
+#
+# Pages serves static files, so this is the game without a session server: solo play and the
+# tutorial work completely, and teams fall back to the tabs of one device. To play across devices
+# from the Pages build, deploy the server (Dockerfile / fly.toml / render.yaml) and set the
+# repository variable SESSION_SERVER to wss://your-server/session.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -- --base=/${{ github.event.repository.name }}/
+        env:
+          VITE_SESSION_SERVER: ${{ vars.SESSION_SERVER }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

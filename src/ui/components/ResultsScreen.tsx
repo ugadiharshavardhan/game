@@ -23,7 +23,7 @@ interface ResultsScreenProps {
  * their team's total, and where the team stands.
  */
 export function ResultsScreen({ result, profile, team, connected, onPlayAgain, onMainMenu }: ResultsScreenProps) {
-  const { scores } = services();
+  const { scores, sync } = services();
   const accepted = useObservable(scores.accepted);
   const rejected = useObservable(scores.rejected);
   const { stats } = result;
@@ -36,10 +36,18 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
     [result.breakdown.total, stats.durationMs, result.completedAt],
   );
 
+  // While you are reading your score your teammates are still out there. Their ghosts keep
+  // arriving, so the panel below can show what they are doing rather than a row of dashes.
+  const [live, setLive] = useState<Record<string, number>>({});
   useEffect(() => {
-    if (view !== 'result') return;
-    // Nothing to do; the boards refresh themselves when opened.
-  }, [view]);
+    if (!team) return;
+    const tick = setInterval(() => {
+      const seen: Record<string, number> = {};
+      for (const peer of sync.peers()) seen[peer.playerId] = Math.round(peer.presence * 100) / 100;
+      setLive(seen);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [team, sync]);
 
   if (view !== 'result') return <Boards initial={view === 'teams' ? 'teams' : 'individual'} onBack={() => setView('result')} />;
 
@@ -116,13 +124,24 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
               <p className="font-display text-xl tabular-nums text-lamp-400">{accepted?.teamScore ?? team.teamScore}</p>
             </div>
             <ul className="mt-3 space-y-1 text-xs">
-              {team.members.map((m) => (
-                <li key={m.playerId} className="flex justify-between gap-3">
-                  <span className={m.playerId === profile?.playerId ? 'text-lamp-200' : 'text-dusk-400'}>{m.displayName}</span>
-                  <span className="tabular-nums text-lamp-200/80">{m.score ?? '—'}</span>
-                </li>
-              ))}
+              {team.members.map((m) => {
+                const me = m.playerId === profile?.playerId;
+                const outThere = !me && m.score === null && (live[m.playerId] ?? 0) > 0.05;
+                return (
+                  <li key={m.playerId} className="flex items-baseline justify-between gap-3">
+                    <span className={me ? 'text-lamp-200' : 'text-dusk-400'}>{m.displayName}</span>
+                    {m.score !== null ? (
+                      <span className="tabular-nums text-lamp-200/80">{m.score}</span>
+                    ) : (
+                      <span className={outThere ? 'text-lamp-400/80' : 'text-dusk-400/60'}>{outThere ? 'still out there' : 'not finished'}</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+            <p className="mt-2 text-[11px] text-dusk-400">
+              Your team's score grows as they finish — this stays up to date while you wait.
+            </p>
             {accepted?.teamRank && <p className="mt-3 text-[11px] text-dusk-400">Your team is #{accepted.teamRank} on the team board.</p>}
           </section>
         )}

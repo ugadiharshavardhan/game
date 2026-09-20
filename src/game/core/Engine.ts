@@ -82,6 +82,10 @@ export class Engine {
   private readonly fakePeers: RemotePeer[] = [];
   private readonly options: GameOptions;
   readonly quality: QualityProfile;
+  /** ?perf=1 — the only thing in the shipped build that reports on itself, and only when asked. */
+  private readonly reportPerf = typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf');
+  private perfFrames = 0;
+  private perfTime = 0;
   private paused = false;
   private pendingCameraSettings: CameraUserSettings | null = null;
   private disposed = false;
@@ -116,7 +120,7 @@ export class Engine {
 
   async start(): Promise<void> {
     const problems = [...validatePlayerConfig(DEFAULT_PLAYER_CONFIG), ...validateCameraConfig(DEFAULT_CAMERA_CONFIG)];
-    if (problems.length) console.warn('[config]', problems);
+    if (problems.length && import.meta.env.DEV) console.warn('[config]', problems);
 
     await RAPIER.init();
     if (this.disposed) return;
@@ -288,6 +292,29 @@ export class Engine {
       this.tutorial?.update(dt);
     }
     this.composer.render();
+    if (this.reportPerf) this.reportPerformance(dt);
+  }
+
+  /**
+   * Twice a second, what this device is actually managing. Off unless the page asked for it, so
+   * it costs nothing in a normal run — and it works in the production build, which is the whole
+   * point: it is how the game gets tested on a real phone.
+   */
+  private reportPerformance(dt: number): void {
+    this.perfFrames++;
+    this.perfTime += dt;
+    if (this.perfTime < 0.5) return;
+    const info = this.renderer.info;
+    const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+    EventBus.emit('ui:perf', {
+      fps: Math.round(this.perfFrames / this.perfTime),
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      quality: this.quality.name,
+      memoryMb: memory ? Math.round(memory.usedJSHeapSize / 1048576) : null,
+    });
+    this.perfFrames = 0;
+    this.perfTime = 0;
   }
 
   /** Dev-only access for automated browser verification (see devtools.ts). */

@@ -56,7 +56,7 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
       ? clips
       : buildProceduralClips(model, { slow: config.slowWalkSpeed, walk: config.walkSpeed, run: config.runSpeed, crouch: config.crouchSpeed });
     this.animation = new PlayerAnimation(model, all, config);
-    if (this.animation.missingClips.length) {
+    if (this.animation.missingClips.length && import.meta.env.DEV) {
       console.warn(`[player] missing animation clips: ${this.animation.missingClips.join(', ')}`);
     }
     this.audio = new PlayerAudio(

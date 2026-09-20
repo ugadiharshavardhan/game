@@ -196,6 +196,54 @@ in time, moonlight encounters, time taken, route efficiency, and the score — i
 efficiency, time bonus, penalties — kept by `run/RunTracker.ts`. Play again remounts the engine
 from nothing.
 
+## Playing together
+
+One village, four devotees, four separate pujas.
+
+`src/net/Authority.ts` is the referee: teams and their codes, lobbies and their rules, the shared
+session, the ghost traffic, and both leaderboards — with no transport in it at all. The real
+server (`server/index.ts`, Node + `ws`) wraps it in a WebSocket; with no server running,
+`LocalTransport` wraps *the same class* in a BroadcastChannel so the tabs of one browser play by
+identical rules. One set of rules, two ways of reaching it.
+
+| Brief (service) | Here | What it is |
+| --- | --- | --- |
+| `PlayerProfileService` | `src/net/PlayerProfileService.ts` | A name, a campus, an id made in this browser |
+| `TeamService` | `src/net/TeamService.ts` | Create, join by code, leave, who is in it |
+| `LobbyService` | `src/net/LobbyService.ts` | Ready, start, and why the button is greyed out |
+| `MultiplayerSessionService` | `src/net/MultiplayerSessionService.ts` | The session's moon seed and clock |
+| `PlayerSyncService` | `src/net/PlayerSyncService.ts` | 10 Hz out, interpolation in |
+| `GhostPlayerVisual` | `src/game/multiplayer/GhostPlayers.ts` | Teammates, translucent, animated |
+| `ScoreService` | `src/net/ScoreService.ts` | Submitting a run, hearing what it was worth |
+| `LeaderboardService` | `src/net/LeaderboardService.ts` | The two boards |
+| `GameStateService` | `src/App.tsx` | menu ⇄ playing ⇄ results, and which run is starting |
+
+**The same moon.** The server hands out a seed and the moment the village opened; every client
+seeds its own `MoonManager` with them and winds it forward to catch up
+(`MoonManager.windForward`). Not one moon message is ever sent, and everybody's sky agrees.
+
+**Ghosts.** A teammate is the same devotee model, translucent, with a rim picking out the
+silhouette, the same animation clips, and a name tag that faces the camera and fades with
+distance. They have no collider at all — four players can crowd one doorway and nobody is stuck
+behind anybody. At most three are drawn, and none while they are indoors.
+
+**Everything else is individual.** The bag, exposure, shelter, the offerings given, the time, the
+score: each player's own. Collecting a flower takes it from *your* world, not your friend's.
+
+**What the client is not trusted with.** Its score, its time, its rank. The server recomputes
+every score from the run's statistics with the same weights (`shared/score.ts`), refuses runs that
+could not have happened (a puja finished in ten seconds, a bag that never walked anywhere, more
+moonlight than the run was long), refuses a second submission for the same session, and keeps only
+a player's best. A team's score is its members' best runs added up.
+
+## The tutorial
+
+`src/game/tutorial/Tutorial.ts` — seven steps, in the real village, with the real systems: walk to
+the flowers, collect them, see the bag, find a lit door, go in, watch the moon rise past the
+window, come out when it has gone. Each step ends on something the player did rather than on a
+timer, and the moon runs a night in miniature (`TUTORIAL_MOON`) so the whole thing fits in two
+minutes.
+
 ## Animation and sound
 
 The character (`devotee.glb`) ships without animation, so its clips are made in code
@@ -208,6 +256,14 @@ Sounds (`audio/SoundFx.ts`) are synthesised at start-up: the pickup chime, leave
 thunk, grains of rice, clay, the temple bell, a door's creak and thud, a knock, the moonrise gong
 and a dog's bark. The continuous beds are in `audio/Ambience.ts` (see above). A test checks every
 one of them is audible, finite and never clipping.
+
+## How hard the device works
+
+`src/game/core/quality.ts` holds one table — low, medium, high — and everything expensive reads a
+number from it: pixel ratio, shadows, MSAA, bloom, LOD and culling distances, the number of real
+lights, particles and ghosts, texture size and anisotropy, the mist, and the rate the ambience is
+synthesised at. `auto` picks by pointer type, cores and device memory; Settings overrides it. See
+[PERFORMANCE.md](PERFORMANCE.md).
 
 ## Tuning
 
