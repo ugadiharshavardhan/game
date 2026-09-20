@@ -120,7 +120,7 @@ sockets.on('connection', (socket: WebSocket) => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
   });
 
-  socket.on('message', (raw) => {
+  socket.on('message', (raw: unknown) => {
     alive = true;
     if (budget-- <= 0) return;
     let message: ClientMessage;
