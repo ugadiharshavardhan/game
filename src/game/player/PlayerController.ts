@@ -3,14 +3,20 @@ import { MathUtils, Vector3 } from 'three';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { Input } from '../core/Input';
 import { groups, Layer, PLAYER_QUERY, type Physics } from '../core/Physics';
-import { deriveLocomotionState, smoothDamp, smoothDampAngle, stepSpeed, targetSpeed } from './locomotion';
+import { deriveLocomotionState, shouldJump, smoothDamp, smoothDampAngle, stepSpeed, targetSpeed } from './locomotion';
 import type { PlayerState } from './PlayerState';
 
 const UP = new Vector3(0, 1, 0);
 
 /**
  * Camera-relative kinematic motor on Rapier's character controller:
- * eased speed, smoothed turning, gravity, slopes and steps, crouch with a ceiling check.
+ * eased speed, smoothed turning, gravity, slopes and steps, crouch with a ceiling check, and a
+ * jump with the two forgivenesses that make one feel obedient (see `shouldJump`).
+ *
+ * The jump has to argue with two of the character controller's own conveniences. Snap-to-ground
+ * pulls the capsule back down the instant it leaves the floor, and `computedGrounded` still
+ * reports ground for a frame or two inside its margin — so a launch turns snapping off while it
+ * is climbing, and ignores `grounded` until the ground is genuinely behind it.
  */
 export class PlayerController {
   /** World position of the feet (bottom of the capsule). */
@@ -19,6 +25,8 @@ export class PlayerController {
   yaw = 0;
   planarSpeed = 0;
   grounded = false;
+  /** Feet off the ground: the animation blends to the airborne pose and locomotion reads Jumping. */
+  airborne = false;
   crouched = false;
   height: number;
   private readonly body: RigidBody;
@@ -27,6 +35,14 @@ export class PlayerController {
   private readonly moveDir = new Vector3(0, 0, 1);
   private readonly desired = new Vector3();
   private verticalSpeed = 0;
+  /** Seconds since the feet last had something under them; 0 while standing. */
+  private sinceGrounded = 0;
+  /** Seconds since jump was last pressed; Infinity until it is. */
+  private sincePressed = Infinity;
+  /** Seconds left of ignoring the controller's ground report after a launch. */
+  private launchLock = 0;
+  /** Starts false so the constructor's `setSnapping(true)` actually reaches the controller. */
+  private snapping = false;
   private readonly turnVelocity = { value: 0 };
   /** A scripted walk toward a point (doorways): overrides input until cleared. */
   private script: { x: number; z: number; speed: number } | null = null;
@@ -64,7 +80,7 @@ export class PlayerController {
     this.kcc = world.createCharacterController(0.02);
     this.kcc.setUp({ x: 0, y: 1, z: 0 });
     this.kcc.enableAutostep(config.stepHeight, 0.15, false);
-    this.kcc.enableSnapToGround(0.3);
+    this.setSnapping(true);
     this.kcc.setMaxSlopeClimbAngle(MathUtils.degToRad(config.maxSlopeDegrees));
     this.kcc.setMinSlopeSlideAngle(MathUtils.degToRad(config.maxSlopeDegrees + 5));
     this.kcc.setApplyImpulsesToDynamicBodies(false);
@@ -98,13 +114,14 @@ export class PlayerController {
     const control = this.grounded ? 1 : c.airControl;
     this.planarSpeed = stepSpeed(this.planarSpeed, target, c.acceleration * control, c.deceleration * control, dt);
 
+    this.jump(dt, input, locked);
+
     if (wishX * wishX + wishZ * wishZ > 1e-4) {
       this.moveDir.set(wishX, 0, wishZ).normalize();
       const smooth = this.planarSpeed > c.walkSpeed * 1.1 ? c.runTurnSmoothTime : c.turnSmoothTime;
       this.yaw = smoothDampAngle(this.yaw, Math.atan2(this.moveDir.x, this.moveDir.z), this.turnVelocity, smooth, dt);
     }
 
-    this.verticalSpeed = this.grounded ? -1 : Math.max(this.verticalSpeed + c.gravity * dt, c.maxFallSpeed);
     // A scripted walk never overshoots its point.
     const stride = Math.min(this.planarSpeed * dt, remaining);
     this.desired.copy(this.moveDir).multiplyScalar(stride).addScaledVector(UP, this.verticalSpeed * dt);
@@ -117,7 +134,13 @@ export class PlayerController {
       PLAYER_QUERY,
     );
     const moved = this.kcc.computedMovement();
-    this.grounded = this.kcc.computedGrounded();
+    // Right after a launch the floor is still inside the controller's margin; believe the jump.
+    this.grounded = this.kcc.computedGrounded() && this.launchLock <= 0;
+    // Steps and slopes drop the ground for a frame at a time; that is not a jump, and the
+    // animation must not flicker to the airborne pose every time the player climbs a stair.
+    this.airborne = !this.grounded && (this.verticalSpeed > 0.01 || this.sinceGrounded > c.coyoteTime);
+    this.launchLock = Math.max(this.launchLock - dt, 0);
+    if (this.grounded && this.verticalSpeed < 0) this.verticalSpeed = 0;
 
     // Walking into a wall should not look like running on the spot.
     if (dt > 0 && this.planarSpeed > 0.01) {
@@ -130,7 +153,45 @@ export class PlayerController {
     this.body.setNextKinematicTranslation(next);
     this.feet.set(next.x, next.y - this.height / 2, next.z);
 
-    this.state.updateLocomotion(deriveLocomotionState(c, this.planarSpeed, this.crouched));
+    this.state.updateLocomotion(deriveLocomotionState(c, this.planarSpeed, this.crouched, this.airborne));
+  }
+
+  /**
+   * Launch if asked and allowed, then carry the vertical speed for this frame.
+   *
+   * A crouched player stands up into the jump when there is headroom, and simply does not jump
+   * when there is not — which is what you want under a veranda. A scripted walk (a doorway) and
+   * every locked state ignore the button outright.
+   */
+  private jump(dt: number, input: Input, locked: boolean): void {
+    const c = this.config;
+    this.sinceGrounded = this.grounded ? 0 : this.sinceGrounded + dt;
+    this.sincePressed = input.jumpPressed && !locked && !this.script ? 0 : this.sincePressed + dt;
+
+    const wants = shouldJump(c, this.sinceGrounded, this.sincePressed);
+    if (wants && !locked && !this.script && (!this.crouched || this.canStand())) {
+      this.crouched = false;
+      this.verticalSpeed = c.jumpSpeed;
+      this.sincePressed = Infinity;
+      this.sinceGrounded = Infinity;
+      this.launchLock = 0.12;
+      this.grounded = false;
+      this.airborne = true;
+    } else if (this.grounded && this.launchLock <= 0) {
+      // Pressed gently into the floor: the controller needs a downward push to stay snapped.
+      this.verticalSpeed = -1;
+    } else {
+      this.verticalSpeed = Math.max(this.verticalSpeed + c.gravity * dt, c.maxFallSpeed);
+    }
+    // Snapping would haul the capsule straight back down out of a jump.
+    this.setSnapping(this.verticalSpeed <= 0 && this.launchLock <= 0);
+  }
+
+  private setSnapping(on: boolean): void {
+    if (on === this.snapping) return;
+    this.snapping = on;
+    if (on) this.kcc.enableSnapToGround(0.3);
+    else this.kcc.disableSnapToGround();
   }
 
   /** Turn toward a world point while movement is locked (e.g. facing an interactable). */
@@ -163,6 +224,11 @@ export class PlayerController {
     this.yaw = yaw;
     this.moveDir.set(Math.sin(yaw), 0, Math.cos(yaw));
     this.planarSpeed = 0;
+    this.verticalSpeed = 0;
+    this.launchLock = 0;
+    this.sincePressed = Infinity;
+    this.airborne = false;
+    this.setSnapping(true);
   }
 
   private toggleCrouch(): void {

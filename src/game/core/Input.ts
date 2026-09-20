@@ -6,7 +6,7 @@ import type { InputDevice } from '../../shared/events';
  * One input model over keyboard + mouse (pointer lock), gamepad and touch.
  *
  * Gameplay reads `move`, `look`, `run`, `slow` and the one-frame edges
- * `crouchPressed` / `interactPressed`. Call `update()` at the start of a frame
+ * `crouchPressed` / `interactPressed` / `jumpPressed`. Call `update()` at the start of a frame
  * and `endFrame()` at the end.
  */
 export class Input {
@@ -29,6 +29,8 @@ export class Input {
   run = false;
   slow = false;
   crouchPressed = false;
+  /** One-frame edge: leave the ground (Space). */
+  jumpPressed = false;
   interactPressed = false;
   pointerLocked = false;
   touchLook = false;
@@ -151,6 +153,7 @@ export class Input {
     this.crouchPressed = false;
     this.interactPressed = false;
     this.recenterPressed = false;
+    this.jumpPressed = false;
   }
 
   releasePointer(): void {
@@ -164,12 +167,15 @@ export class Input {
   }
 
   private onKey(e: KeyboardEvent, down: boolean): void {
+    // Space scrolls the page and re-presses the last focused button; the game wants it for jump.
+    if (e.code === 'Space') e.preventDefault();
     if (e.repeat) return;
     if (down) {
       this.setDevice('keyboard');
       this.keys.add(e.code);
       if (e.code === 'KeyC') this.crouchPressed = true;
       if (e.code === 'KeyE') this.interactPressed = true;
+      if (e.code === 'Space') this.jumpPressed = true;
     } else {
       this.keys.delete(e.code);
     }

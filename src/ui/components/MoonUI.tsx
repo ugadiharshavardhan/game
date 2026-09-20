@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ExposureLevel, MoonStateName } from '../../shared/types';
+import type { ExposureLevel, MoonStateName, NightPhase } from '../../shared/types';
 import { useGameEvent } from '../hooks/useGameEvent';
 
 interface MoonInfo {
@@ -8,6 +8,22 @@ interface MoonInfo {
   note?: string;
   progress: number;
   dangerous: boolean;
+  phase: NightPhase;
+  retired: boolean;
+}
+
+/**
+ * The instruction under the sky, in as few words as it can be put.
+ *
+ * The whole loop is this one line: clouds mean gather, a clear sky means get behind a door, and
+ * after dawn neither is true any more — there is only the temple and the time left to reach it.
+ */
+function instruction(moon: MoonInfo): string {
+  if (moon.phase === 'evening') return 'Learn the lanes while it is light';
+  if (moon.retired) return 'Finish the puja at the temple';
+  if (moon.dangerous) return 'Get inside — the moonlight costs you';
+  if (moon.state === 'warning') return 'Find a lit doorway now';
+  return 'Gather while the clouds hold';
 }
 
 /**
@@ -18,7 +34,14 @@ interface MoonInfo {
  * Exposure appears as a thin arc round the moon, and only once the moon has begun to catch you.
  */
 export function MoonUI() {
-  const [moon, setMoon] = useState<MoonInfo>({ state: 'safe', label: 'Clouds over the moon', progress: 0, dangerous: false });
+  const [moon, setMoon] = useState<MoonInfo>({
+    state: 'safe',
+    label: 'The sun is going down',
+    progress: 0,
+    dangerous: false,
+    phase: 'evening',
+    retired: false,
+  });
   const [exposure, setExposure] = useState<{ value: number; level: ExposureLevel }>({ value: 0, level: 'calm' });
 
   useGameEvent('ui:moon', (m) => setMoon((prev) => (prev.state === m.state && Math.abs(prev.progress - m.progress) < 0.02 ? prev : m)));
@@ -28,7 +51,17 @@ export function MoonUI() {
 
   // How much of the moon is out: clouds thin through WARNING, clear by MOON_ACTIVE.
   const open =
-    moon.state === 'safe' ? 0 : moon.state === 'warning' ? 0.25 * moon.progress : moon.state === 'rising' ? 0.25 + 0.75 * moon.progress : moon.state === 'fading' ? 1 - moon.progress : 1;
+    moon.phase === 'evening' || moon.retired
+      ? 0
+      : moon.state === 'safe'
+        ? 0
+        : moon.state === 'warning'
+          ? 0.25 * moon.progress
+          : moon.state === 'rising'
+            ? 0.25 + 0.75 * moon.progress
+            : moon.state === 'fading'
+              ? 1 - moon.progress
+              : 1;
   const urgent = moon.state === 'rising' || exposure.level === 'warn' || exposure.level === 'danger';
   const ring = exposure.value > 1;
 
@@ -64,9 +97,9 @@ export function MoonUI() {
       </span>
       <span className="leading-tight">
         <span className={`block text-[11px] tracking-[0.12em] ${moon.dangerous ? 'text-[#cfd9ff]' : 'text-lamp-200/80'}`}>{moon.label}</span>
-        {moon.note && (
-          <span className={`block text-[10px] tracking-[0.18em] uppercase ${urgent ? 'animate-pulse text-[#9fb4ff]' : 'text-dusk-400'}`}>{moon.note}</span>
-        )}
+        <span className={`block text-[10px] tracking-[0.18em] uppercase ${urgent ? 'animate-pulse text-[#9fb4ff]' : 'text-dusk-400'}`}>
+          {moon.note ?? instruction(moon)}
+        </span>
       </span>
     </div>
   );

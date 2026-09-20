@@ -30,10 +30,19 @@ export interface GameSettings {
 }
 
 /** Mirrors the engine's PlayerStateId values; duplicated here so React never imports the engine. */
-export type PlayerStateName = 'idle' | 'walking' | 'running' | 'sneaking' | 'interacting' | 'hidden';
+export type PlayerStateName = 'idle' | 'walking' | 'running' | 'sneaking' | 'jumping' | 'interacting' | 'hidden';
 
 /** The moon's cycle (see game/moon/MoonState.ts): SAFE → WARNING → RISING → ACTIVE → FADING. */
 export type MoonStateName = 'safe' | 'warning' | 'rising' | 'active' | 'fading';
+
+/**
+ * Where the night has got to (see game/night/NightClock.ts). A run walks through all three once:
+ *
+ *   evening  the sun is going; the village is still about its business and no moon may rise
+ *   night    the working hours of the run: clouds cover the moon, then draw back, then cover again
+ *   dawn     05:00 is close; the moon is retired for good and the sky lifts
+ */
+export type NightPhase = 'evening' | 'night' | 'dawn';
 
 /** How much of the moon has fallen on the player (game/moon/ExposureSystem.ts). */
 export type ExposureLevel = 'calm' | 'exposed' | 'warn' | 'danger';
@@ -54,12 +63,16 @@ export interface RunStats {
   distanceTravelled: number;
   /** Seconds spent in moonlight without shelter. */
   exposedSeconds: number;
+  /** Every offering was before Bappa before 05:00. False when dawn broke first. */
+  pujaComplete: boolean;
 }
 
 export interface ScoreBreakdown {
   items: number;
   shelter: number;
   efficiency: number;
+  /** The puja itself: awarded once, and only to a run that finished before dawn. */
+  completion: number;
   timeBonus: number;
   penalties: number;
   total: number;

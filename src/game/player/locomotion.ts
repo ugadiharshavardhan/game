@@ -40,10 +40,31 @@ export function stepSpeed(
   return Math.abs(delta) <= step ? target : current + Math.sign(delta) * step;
 }
 
-export function deriveLocomotionState(c: PlayerConfig, planarSpeed: number, crouched: boolean): PlayerStateId {
+export function deriveLocomotionState(
+  c: PlayerConfig,
+  planarSpeed: number,
+  crouched: boolean,
+  airborne = false,
+): PlayerStateId {
+  // Feet off the ground beats everything: whatever the legs were doing, they are not doing it now.
+  if (airborne) return PlayerStateId.Jumping;
   if (crouched) return PlayerStateId.Sneaking;
   if (planarSpeed > c.walkSpeed * 1.1) return PlayerStateId.Running;
   return planarSpeed > c.idleThreshold ? PlayerStateId.Walking : PlayerStateId.Idle;
+}
+
+/**
+ * Whether this frame is a launch.
+ *
+ * Two forgivenesses, both standard and both the reason a jump feels like it obeys you:
+ * *coyote time* lets a jump pressed just after walking off an edge still count, and the *buffer*
+ * lets a jump pressed just before landing fire the moment the feet touch down.
+ *
+ * @param sinceGrounded seconds since the player last stood on something (0 while standing).
+ * @param sincePressed seconds since the jump button was last pressed (Infinity if never).
+ */
+export function shouldJump(c: PlayerConfig, sinceGrounded: number, sincePressed: number): boolean {
+  return sinceGrounded <= c.coyoteTime && sincePressed <= c.jumpBufferTime;
 }
 
 /**

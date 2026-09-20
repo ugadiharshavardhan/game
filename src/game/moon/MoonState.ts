@@ -22,10 +22,15 @@ export interface MoonCycleConfig {
   jitter: number;
 }
 
-/** The brief's example cycle: 4 min safe, 30 s warning, 20 s rising, 60 s of moon, 20 s fading. */
+/**
+ * One turn of the sky is about four minutes: two of cloud to work under, then the signs, then a
+ * minute and a half with the moon out. Against the night's playable stretch (NightClock: roughly
+ * eleven and a half minutes between the evening and dawn) that is three moonrises in a run —
+ * enough for the rhythm of collect, hide, collect to be learned inside one night.
+ */
 export const DEFAULT_MOON_CONFIG: MoonCycleConfig = {
-  durations: { safe: 240, warning: 30, rising: 20, active: 60, fading: 20 },
-  firstSafe: 150,
+  durations: { safe: 120, warning: 25, rising: 18, active: 55, fading: 18 },
+  firstSafe: 45,
   jitter: 0.08,
 };
 

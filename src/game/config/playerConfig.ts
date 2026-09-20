@@ -26,6 +26,17 @@ export interface PlayerConfig {
   gravity: number;
   maxFallSpeed: number;
 
+  // Jump
+  /** Upward speed at the moment of a jump (m/s). */
+  jumpSpeed: number;
+  /**
+   * Grace after walking off an edge in which a jump still counts — the difference between a
+   * character that feels responsive and one that feels like it is arguing with you.
+   */
+  coyoteTime: number;
+  /** A jump pressed this long before landing still fires on touchdown. */
+  jumpBufferTime: number;
+
   // Capsule (m)
   standHeight: number;
   crouchHeight: number;
@@ -73,6 +84,12 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   gravity: -20,
   maxFallSpeed: -30,
 
+  // 5 m/s against -20 m/s² is an apex of about 0.62 m: the temple steps and the plinths, and
+  // nothing the village was built to keep you out of.
+  jumpSpeed: 5,
+  coyoteTime: 0.12,
+  jumpBufferTime: 0.12,
+
   standHeight: 1.62,
   crouchHeight: 1.05,
   radius: 0.28,
@@ -106,6 +123,8 @@ export function validatePlayerConfig(c: PlayerConfig): string[] {
   }
   if (c.acceleration <= 0 || c.deceleration <= 0) errors.push('Acceleration must be positive.');
   if (c.gravity >= 0) errors.push('Gravity must be negative.');
+  if (c.jumpSpeed <= 0) errors.push('Jump speed must be positive.');
+  if (c.coyoteTime < 0 || c.jumpBufferTime < 0) errors.push('Jump timings cannot be negative.');
   if (c.crouchHeight >= c.standHeight) errors.push('Crouch height must be below stand height.');
   if (c.radius * 2 > c.crouchHeight) errors.push('Capsule radius too large for crouch height.');
   if (c.minMotionSpeed <= 0 || c.minMotionSpeed > c.maxMotionSpeed) {

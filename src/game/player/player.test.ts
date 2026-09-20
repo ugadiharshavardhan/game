@@ -3,6 +3,7 @@ import { DEFAULT_PLAYER_CONFIG as C, validatePlayerConfig } from '../config/play
 import {
   blendWeights,
   deriveLocomotionState,
+  shouldJump,
   motionSpeedMultiplier,
   smoothDampAngle,
   stepSpeed,
@@ -49,6 +50,45 @@ describe('deriveLocomotionState', () => {
     [1.4, true, PlayerStateId.Sneaking],
   ])('speed %f crouched %s → %s', (speed, crouched, expected) =>
     expect(deriveLocomotionState(C, speed, crouched)).toBe(expected));
+
+  it('reads as jumping the whole time the feet are off the ground', () => {
+    for (const speed of [0, 1, 4]) {
+      for (const crouched of [false, true]) {
+        expect(deriveLocomotionState(C, speed, crouched, true)).toBe(PlayerStateId.Jumping);
+      }
+    }
+  });
+});
+
+describe('shouldJump', () => {
+  it('jumps when standing and asked', () => {
+    expect(shouldJump(C, 0, 0)).toBe(true);
+  });
+
+  it('forgives a jump pressed just after walking off an edge', () => {
+    expect(shouldJump(C, C.coyoteTime * 0.5, 0), 'inside the coyote window').toBe(true);
+    expect(shouldJump(C, C.coyoteTime + 0.05, 0), 'and not outside it').toBe(false);
+  });
+
+  it('remembers a jump pressed just before landing', () => {
+    expect(shouldJump(C, 0, C.jumpBufferTime * 0.5), 'inside the buffer').toBe(true);
+    expect(shouldJump(C, 0, C.jumpBufferTime + 0.05), 'and forgets it after').toBe(false);
+  });
+
+  it('never jumps out of mid-air', () => {
+    expect(shouldJump(C, 0.5, 0)).toBe(false);
+  });
+
+  it('never jumps without being asked', () => {
+    expect(shouldJump(C, 0, Infinity)).toBe(false);
+  });
+
+  it('clears the plinths and steps the village is built from', () => {
+    // Apex of a launch at jumpSpeed under gravity: v^2 / 2g.
+    const apex = (C.jumpSpeed * C.jumpSpeed) / (2 * Math.abs(C.gravity));
+    expect(apex, 'higher than a step the autostep will not take').toBeGreaterThan(C.stepHeight);
+    expect(apex, 'and not so high it reads as a moon jump').toBeLessThan(1.2);
+  });
 });
 
 describe('blendWeights', () => {

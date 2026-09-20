@@ -8,6 +8,7 @@ export const PlayerStateId = {
   Walking: 'walking',
   Running: 'running',
   Sneaking: 'sneaking',
+  Jumping: 'jumping',
   Interacting: 'interacting',
   Hidden: 'hidden',
 } as const;

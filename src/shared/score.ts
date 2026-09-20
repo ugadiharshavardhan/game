@@ -11,6 +11,8 @@ export interface ScoreWeights {
   perItem: number;
   perShelter: number;
   efficiencyMax: number;
+  /** The puja finished before 05:00. The single largest thing a run can be worth. */
+  completion: number;
   /** The route a careful player walks, metres: the yardstick for efficiency. */
   efficientMetres: number;
   /** Finishing under this many seconds earns the bonus, at `perSecond` a second, up to `timeMax`. */
@@ -25,6 +27,7 @@ export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   perItem: 40,
   perShelter: 250,
   efficiencyMax: 1000,
+  completion: 1200,
   efficientMetres: 900,
   targetSeconds: 600,
   perSecond: 3,
@@ -41,16 +44,21 @@ export interface ScoredRun {
 
 export function scoreRun(stats: RunStats, w: ScoreWeights = DEFAULT_SCORE_WEIGHTS): ScoredRun {
   const efficiency = stats.distanceTravelled > 0 ? Math.min(w.efficientMetres / stats.distanceTravelled, 1) : 1;
+  // Dawn broke first: the offerings gathered still count, but the puja's own worth and the
+  // reward for being quick about it belong to a run that actually finished.
+  const done = stats.pujaComplete;
   const breakdown: ScoreBreakdown = {
     items: stats.itemsCollected * w.perItem,
     shelter: stats.shelterEvents * w.perShelter,
     efficiency: Math.round(efficiency * w.efficiencyMax),
+    completion: done ? w.completion : 0,
     // Capped: a quick run is worth a lot, but never more than gathering the offerings was.
-    timeBonus: Math.min(Math.max(0, Math.round((w.targetSeconds - stats.durationMs / 1000) * w.perSecond)), w.timeMax),
+    timeBonus: done ? Math.min(Math.max(0, Math.round((w.targetSeconds - stats.durationMs / 1000) * w.perSecond)), w.timeMax) : 0,
     penalties: -(stats.itemsLost * w.perItemLost + stats.overwhelmed * w.perOverwhelmed),
     total: 0,
   };
-  breakdown.total = breakdown.items + breakdown.shelter + breakdown.efficiency + breakdown.timeBonus + breakdown.penalties;
+  breakdown.total =
+    breakdown.items + breakdown.shelter + breakdown.efficiency + breakdown.completion + breakdown.timeBonus + breakdown.penalties;
   return { breakdown, efficiency };
 }
 
@@ -94,8 +102,11 @@ export function validateStats(stats: RunStats, limits: RunLimits = DEFAULT_RUN_L
   for (const [name, value] of numbers) {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return `${name} is not a real number`;
   }
+  if (typeof stats.pujaComplete !== 'boolean') return 'pujaComplete is not a flag';
   const seconds = stats.durationMs / 1000;
-  if (stats.itemsCollected < limits.requiredItems) return 'the puja was not completed';
+  // A run that says it finished the puja must have carried the offerings to do it. A run that
+  // ran out of night is a real run too, and is allowed to have gathered nothing at all.
+  if (stats.pujaComplete && stats.itemsCollected < limits.requiredItems) return 'the puja was not completed';
   if (stats.itemsCollected > limits.maxItems) return 'more offerings than the village holds';
   if (seconds < limits.minSeconds) return 'finished faster than the village can be walked';
   if (seconds > limits.maxSeconds) return 'longer than a night';

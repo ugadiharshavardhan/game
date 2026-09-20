@@ -6,6 +6,7 @@ import { useGameEvent } from '../hooks/useGameEvent';
 import { InteractionPrompt } from './InteractionPrompt';
 import { ItemIcon } from './InventoryUI';
 import { MoonUI } from './MoonUI';
+import { NightClockUI } from './NightClockUI';
 
 interface HudProps {
   device: InputDevice;
@@ -111,7 +112,10 @@ export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps)
       {/* Top centre: the sky, and SAFE when you are out of it. On a narrow screen it sits below
           the objective and the buttons rather than fighting them for the same row. */}
       <div className="safe-top absolute inset-x-0 top-20 flex flex-col items-center gap-2 sm:top-4">
-        <MoonUI />
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <MoonUI />
+          <NightClockUI />
+        </div>
         {shelter && (
           <div className="flex animate-[prompt-in_220ms_ease-out] items-center gap-2 rounded-full border border-lamp-400/50 bg-night-950/70 px-3 py-1.5 text-[11px] text-lamp-200 backdrop-blur-md">
             <span className="rounded-sm bg-lamp-400 px-1.5 text-[10px] font-bold tracking-[0.2em] text-night-950">SAFE</span>

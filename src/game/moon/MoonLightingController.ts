@@ -36,9 +36,10 @@ const look = (at: number, o: Written): Keyframe => ({
   skyTint: new Color(...o.skyTint),
 });
 
-/** Where the sun sets, and the arc the moon climbs from the opposite horizon. */
+/** Where the sun sets, the arc the moon climbs from the opposite horizon, and where 5 a.m. comes up. */
 const SUN_AZIMUTH = 250;
 const MOON_AZIMUTH = 100;
+const DAWN_AZIMUTH = 75;
 /** The moonlight value at which the moon takes the sun's place as the one real light. */
 const HANDOVER = 0.34;
 
@@ -215,33 +216,106 @@ export const LOOKS: Keyframe[] = [
   }),
 ];
 
+/**
+ * DAWN — 05:00, the far end of the night. Not on the moonlight curve at all: the sky is blended
+ * toward this by its own 0..1, so the last minutes lighten from wherever the moon left them.
+ *
+ * It is the sunset palette read backwards — a low sun from the *other* horizon, the stars going
+ * out, ground mist still in the lanes — which is what makes it legible as morning rather than as
+ * the evening the player started in.
+ */
+export const DAWN: SkyLook = look(0, {
+  lightElevation: 3.5,
+  lightAzimuth: DAWN_AZIMUTH,
+  lightColour: '#ffb98a',
+  lightIntensity: 0.9,
+  shadowSoftness: 3.2,
+  hemiSky: '#93a3cf',
+  hemiGround: '#5b4734',
+  hemiIntensity: 0.6,
+  fogColour: '#8b8095',
+  fogDensity: 0.013,
+  envIntensity: 0.38,
+  turbidity: 7,
+  rayleigh: 3,
+  mieCoefficient: 0.005,
+  mieDirectionalG: 0.8,
+  skyTint: [0.8, 0.76, 0.85],
+  skyBodyIsMoon: false,
+  starOpacity: 0.04,
+  moonOpacity: 0.03,
+  mistOpacity: 0.22,
+  exposure: 0.78,
+});
+
 /** Fastest the sky may travel, in moonlight per second — only a skipped state ever hits it. */
 const MAX_RATE = 0.5;
 
 export class MoonLightingController {
-  /** 0..1: how far into the night the sky is. The art reads this to push the village's own fire. */
+  /**
+   * 0..1: how far into the night the sky is. The art reads this to push the village's own fire.
+   *
+   * It follows whichever is higher — the floor the night clock sets once the lamps are lit, or
+   * the moonlight actually falling. That is what keeps a cloudy stretch at one in the morning
+   * dark: without the floor, every safe window would render as the sunset the curve starts on.
+   */
   night = 0;
+  /** 0..1 of morning blended over the top of the curve. */
+  dawn = 0;
   private readonly env: Environment;
   private readonly current: SkyLook;
+  private readonly sampled: SkyLook;
 
   constructor(env: Environment) {
     this.env = env;
     this.current = blank();
+    this.sampled = blank();
     this.apply(0);
   }
 
   update(dt: number, moon: MoonFrame): void {
-    const step = MathUtils.clamp(moon.moonlight - this.night, -MAX_RATE * dt, MAX_RATE * dt);
-    this.apply(this.night + step);
+    const target = Math.max(moon.nightBase, moon.moonlight);
+    const step = MathUtils.clamp(target - this.night, -MAX_RATE * dt, MAX_RATE * dt);
+    const dawnStep = MathUtils.clamp(moon.dawn - this.dawn, -MAX_RATE * dt, MAX_RATE * dt);
+    this.apply(this.night + step, this.dawn + dawnStep);
     this.env.update(dt);
   }
 
-  /** Sets the sky to a point on the curve outright (start of a run, or a skipped state in dev). */
-  apply(k: number): void {
+  /** Sets the sky outright (start of a run, or a skipped state in dev). */
+  apply(k: number, dawn = this.dawn): void {
     this.night = MathUtils.clamp(k, 0, 1);
-    sample(this.night, this.current);
+    this.dawn = MathUtils.clamp(dawn, 0, 1);
+    sample(this.night, this.sampled);
+    blend(this.sampled, DAWN, this.dawn, this.current);
     this.env.setLook(this.current);
   }
+}
+
+/** Mixes two looks into `out` by `t`, allocating nothing. The sky body is never a blend of two. */
+function blend(a: SkyLook, b: SkyLook, t: number, out: SkyLook): SkyLook {
+  const n = (x: number, y: number) => MathUtils.lerp(x, y, t);
+  out.lightElevation = n(a.lightElevation, b.lightElevation);
+  out.lightAzimuth = n(a.lightAzimuth, b.lightAzimuth);
+  out.lightColour.copy(a.lightColour).lerp(b.lightColour, t);
+  out.lightIntensity = n(a.lightIntensity, b.lightIntensity);
+  out.shadowSoftness = n(a.shadowSoftness, b.shadowSoftness);
+  out.hemiSky.copy(a.hemiSky).lerp(b.hemiSky, t);
+  out.hemiGround.copy(a.hemiGround).lerp(b.hemiGround, t);
+  out.hemiIntensity = n(a.hemiIntensity, b.hemiIntensity);
+  out.fogColour.copy(a.fogColour).lerp(b.fogColour, t);
+  out.fogDensity = n(a.fogDensity, b.fogDensity);
+  out.envIntensity = n(a.envIntensity, b.envIntensity);
+  out.turbidity = n(a.turbidity, b.turbidity);
+  out.rayleigh = n(a.rayleigh, b.rayleigh);
+  out.mieCoefficient = n(a.mieCoefficient, b.mieCoefficient);
+  out.mieDirectionalG = n(a.mieDirectionalG, b.mieDirectionalG);
+  out.skyTint.copy(a.skyTint).lerp(b.skyTint, t);
+  out.starOpacity = n(a.starOpacity, b.starOpacity);
+  out.moonOpacity = n(a.moonOpacity, b.moonOpacity);
+  out.mistOpacity = n(a.mistOpacity, b.mistOpacity);
+  out.exposure = n(a.exposure, b.exposure);
+  out.skyBodyIsMoon = t < 0.5 ? a.skyBodyIsMoon : b.skyBodyIsMoon;
+  return out;
 }
 
 /** Interpolates the keyframes into `out`, allocating nothing. */

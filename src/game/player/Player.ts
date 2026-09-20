@@ -158,7 +158,7 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   update(dt: number, cameraYaw: number): void {
     this.controller.update(dt, this.input, cameraYaw);
     this.syncModel();
-    this.animation.update(dt, this.controller.planarSpeed, this.controller.crouched);
+    this.animation.update(dt, this.controller.planarSpeed, this.controller.crouched, this.controller.airborne);
     this.audio.update(this.controller, this.state.value === PlayerStateId.Hidden);
   }
 

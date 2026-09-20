@@ -41,6 +41,7 @@ function table(options: AuthorityOptions = {}) {
 }
 
 const goodRun = (over: Partial<RunStats> = {}): RunStats => ({
+  pujaComplete: true,
   itemsCollected: 25,
   itemsLost: 0,
   shelterEvents: 2,

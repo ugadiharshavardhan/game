@@ -24,7 +24,13 @@ Third-person 3D (Three.js + Rapier), playable start to finish: gather the seven 
 least — and offer them at the temple, sheltering indoors whenever the clouds part and the
 Chaturthi moon shines. Ten houses can be walked into.
 
-The evening runs on a five-state moon cycle (safe → warning → rising → active → fading) that
+A run is one night: it opens at 6:30 in the evening and ends at 5 a.m., fifteen real minutes
+later, whether the puja is finished or not. The night has three phases — an **evening** in which
+no moon may rise, a **night** of three moonrises, and a **dawn** after which the sky lightens and
+no moon rises again. The night clock is `src/game/night/NightClock.ts`; the HUD shows the hour
+and how much of the night is left.
+
+Within the night, a five-state moon cycle (safe → warning → rising → active → fading) that
 drives the lighting from sunset through dusk to a risen moon, the five synthesised ambience beds,
 the villagers going home, the dogs settling, and *exposure* — which climbs while you are out under
 the light and, if it fills, costs you three offerings and a lift indoors from the neighbours,
@@ -38,7 +44,7 @@ New players get a two-minute playable tutorial (from **How to play**): walk, col
 watch the bag fill, find a lit door, go in, watch a moonrise through the window, and come out
 again. Every step ends on something the player did.
 
-Controls: WASD / left stick move · mouse / right stick look · Shift run · Ctrl slow walk ·
+Controls: WASD / left stick move · mouse / right stick look · Shift run · Space jump · Ctrl slow walk ·
 C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
 On touch: a thumb joystick on the left, drag on the right to look, pinch zooms, and large
 COLLECT / SNEAK / bag / pause buttons; keyboard hints are hidden and a portrait phone is asked,
@@ -89,7 +95,8 @@ those art modules (everything else greybox) for fast art iteration.
 
 In development, `window.__seva` offers `teleport(x, z, yawDeg)`, `look(yawDeg, pitchDeg)`,
 `walkTo(x, z, { run })` (an autopilot on the real controller), `moon(state)`, `give(item, n)`,
-`interact()`, `enter(houseId)` / `leave()` and `info()` (position, area, safe, exposure, moon,
+`interact()`, `enter(houseId)` / `leave()`, `night(t)` (wind the clock, 0 = 6:30 PM, 1 = 5 AM),
+`jump()`, and `info()` (position, area, safe, exposure, moon, the hour of the night,
 bag, camera stats, draw calls). It is not included in production builds.
 
 ## Camera
@@ -148,6 +155,7 @@ src/
     ├── inventory/        InventorySystem, InventoryItem (+ tests)
     ├── items/            PujaItem
     ├── shelter/          SafeHouse, HouseInterior, ShelterManager (+ walk-in tests)
+    ├── night/            NightClock: 6:30 PM to 5 AM, the three phases, and the end of the run
     ├── moon/             MoonState, MoonManager, MoonLightingController, MoonAudioController,
     │                     ExposureSystem (+ tests)
     ├── run/              RunTracker — the run's statistics and its score

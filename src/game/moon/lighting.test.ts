@@ -1,6 +1,8 @@
 import { Color, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { NIGHT_BASE } from '../night/NightClock';
 import type { Environment, SkyLook } from '../world/environment';
+import type { MoonFrame } from '../world/World';
 import { MoonLightingController } from './MoonLightingController';
 
 /** An Environment that only remembers the last sky it was given. */
@@ -22,7 +24,7 @@ function rig() {
   const lighting = new MoonLightingController(env);
   return {
     at(k: number): SkyLook {
-      lighting.apply(k);
+      lighting.apply(k, lighting.dawn);
       return look as SkyLook;
     },
     lighting,
@@ -30,6 +32,21 @@ function rig() {
 }
 
 const warmth = (c: Color) => c.r - c.b;
+
+/** A MoonFrame for the tests: full moon, deep night, no dawn, unless said otherwise. */
+const frame = (over: Partial<MoonFrame> = {}): MoonFrame => ({
+  state: 'active',
+  progress: 1,
+  moonlight: 1,
+  goingHome: true,
+  dangerous: true,
+  untilMoonlight: 0,
+  phase: 'night',
+  nightBase: NIGHT_BASE,
+  dawn: 0,
+  retired: false,
+  ...over,
+});
 
 describe('MoonLightingController', () => {
   it('starts on a warm low sun and ends on a cool high moon', () => {
@@ -102,9 +119,34 @@ describe('MoonLightingController', () => {
     const r = rig();
     r.lighting.apply(0);
     // A state skipped in dev jumps the target: the sky still travels at its own pace.
-    r.lighting.update(0.1, { state: 'active', progress: 1, moonlight: 1, goingHome: true, dangerous: true, untilMoonlight: 0 });
+    r.lighting.update(0.1, frame());
     expect(r.lighting.night).toBeLessThan(0.1);
-    for (let i = 0; i < 200; i++) r.lighting.update(0.05, { state: 'active', progress: 1, moonlight: 1, goingHome: true, dangerous: true, untilMoonlight: 0 });
+    for (let i = 0; i < 200; i++) r.lighting.update(0.05, frame());
     expect(r.lighting.night).toBe(1);
+  });
+
+  it('will not let a cloudy hour of the night look like sunset', () => {
+    const r = rig();
+    r.lighting.apply(0);
+    // No moon at all, but the night clock's floor is under the sky.
+    for (let i = 0; i < 400; i++) r.lighting.update(0.05, frame({ state: 'safe', moonlight: 0, nightBase: NIGHT_BASE, dangerous: false }));
+    expect(r.lighting.night, 'the sky sits on the floor, not at sunset').toBeCloseTo(NIGHT_BASE, 2);
+    const sky = r.at(r.lighting.night);
+    expect(warmth(sky.lightColour), 'a small-hours sky is not a warm one').toBeLessThan(0.2);
+    expect(sky.starOpacity, 'the stars are out').toBeGreaterThan(0.5);
+  });
+
+  it('lifts to a morning from the other horizon, and puts the stars out', () => {
+    const r = rig();
+    const night = r.at(NIGHT_BASE);
+    const nightAzimuth = night.lightAzimuth;
+    const nightStars = night.starOpacity;
+
+    r.lighting.apply(NIGHT_BASE, 1);
+    const morning = r.at(NIGHT_BASE);
+    expect(morning.starOpacity, 'the stars go out').toBeLessThan(nightStars);
+    expect(warmth(morning.lightColour), 'the light comes back warm').toBeGreaterThan(0.2);
+    expect(Math.abs(morning.lightAzimuth - nightAzimuth), 'the sun comes up somewhere else').toBeGreaterThan(10);
+    expect(morning.skyBodyIsMoon, 'the moon is no longer what the sky glows around').toBe(false);
   });
 });

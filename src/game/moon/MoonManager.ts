@@ -5,10 +5,25 @@
  * a player learns to read the sky instead of counting seconds. Everything else — the lighting, the
  * ambience, the villagers walking home, the dogs, the exposure rate, the HUD — follows this one
  * object's `state`, `progress` and `moonlight`.
+ *
+ * The night clock holds the reins (night/NightClock.ts). It can stop the cycle turning at all —
+ * the evening, before the sun is properly down — and it can withhold permission for a new moon to
+ * begin, which is what dawn does, permanently. A moon already out when that permission is
+ * withdrawn is never snapped off: it finishes its fading, and the clouds then stay for good.
  */
 import { DEFAULT_MOON_CONFIG, exposureRateFor, MOON_STATE_INFO, MOON_STATES, type MoonCycleConfig, type MoonStateInfo, type MoonStateName, moonlightFor } from './MoonState';
 
 export type MoonListener = (state: MoonStateName, info: MoonStateInfo) => void;
+
+/** What the night clock allows the moon this frame. */
+export interface MoonGate {
+  /** The cycle turns at all. False through the evening. */
+  ticking: boolean;
+  /** A *new* moon may begin. False through the evening and, for good, from dawn. */
+  mayRise: boolean;
+}
+
+const OPEN: MoonGate = { ticking: true, mayRise: true };
 
 export class MoonManager {
   state: MoonStateName = 'safe';
@@ -18,6 +33,7 @@ export class MoonManager {
   cycle = 0;
 
   private elapsed = 0;
+  private held = false;
   private length: number;
   private readonly random: () => number;
   private readonly config: MoonCycleConfig;
@@ -70,9 +86,22 @@ export class MoonManager {
     return () => this.listeners.delete(listener);
   }
 
-  update(dt: number): void {
+  /** True once the sky has been told no more moons and is sitting out the rest of the night. */
+  get retired(): boolean {
+    return this.state === 'safe' && this.held;
+  }
+
+  update(dt: number, gate: MoonGate = OPEN): void {
+    if (!gate.ticking) return;
     this.elapsed += dt;
+    // Held at the end of a cloudy stretch: the clouds simply stay until a moon is allowed again.
+    this.held = false;
     while (this.elapsed >= this.length) {
+      if (this.state === 'safe' && !gate.mayRise) {
+        this.elapsed = this.length;
+        this.held = true;
+        break;
+      }
       this.elapsed -= this.length;
       this.advance();
     }
@@ -89,10 +118,17 @@ export class MoonManager {
    * village an hour late gets the same moon, in the same place, as everyone already in it. Done
    * in one step per state rather than in frames, so a long night costs nothing to catch up on.
    */
-  windForward(seconds: number): void {
+  windForward(seconds: number, gate: MoonGate = OPEN): void {
+    if (!gate.ticking) return;
     let left = Math.max(0, seconds);
     let guard = 0;
     while (left >= this.length - this.elapsed && guard++ < 10000) {
+      if (this.state === 'safe' && !gate.mayRise) {
+        this.elapsed = this.length;
+        this.held = true;
+        this.progress = 1;
+        return;
+      }
       left -= this.length - this.elapsed;
       this.elapsed = 0;
       this.advance();
@@ -111,6 +147,7 @@ export class MoonManager {
     this.state = state;
     this.elapsed = 0;
     this.progress = 0;
+    this.held = false;
     const j = this.config.jitter;
     this.length = this.config.durations[state] * (1 + (this.random() * 2 - 1) * j);
     for (const l of this.listeners) l(state, MOON_STATE_INFO[state]);

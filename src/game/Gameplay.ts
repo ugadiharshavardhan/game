@@ -9,7 +9,7 @@
 import { type Camera, Vector3 } from 'three';
 import { EventBus } from '../shared/EventBus';
 import { describeStacks, ITEM_IDS, ITEMS, type InventoryStack } from '../shared/items';
-import type { MoonStateName } from '../shared/types';
+import type { MoonStateName, NightPhase } from '../shared/types';
 import type { Ambience } from './audio/Ambience';
 import type { SoundFx } from './audio/SoundFx';
 import type { Physics } from './core/Physics';
@@ -20,6 +20,7 @@ import { DEFAULT_EXPOSURE_CONFIG, ExposureSystem, type Gait } from './moon/Expos
 import { MoonAudioController } from './moon/MoonAudioController';
 import { MoonManager } from './moon/MoonManager';
 import { DEFAULT_MOON_CONFIG, type MoonCycleConfig } from './moon/MoonState';
+import { DEFAULT_NIGHT_CONFIG, NightClock, type NightConfig } from './night/NightClock';
 import { RunTracker } from './run/RunTracker';
 import { PlayerAction } from './player/PlayerAnimation';
 import type { ScriptedCamera, ShelterActor, ShelterCamera } from './shelter/ShelterManager';
@@ -29,6 +30,13 @@ import type { World, WorldServices } from './world/World';
 const PLAYER_LINE: Partial<Record<MoonStateName, string>> = {
   warning: 'The lamps are going up early… the moon is coming.',
   rising: 'There it is. I should get under a roof.',
+};
+
+/** What the turning of the night is worth saying out loud. Each is said once. */
+const PHASE_LINE: Record<NightPhase, { text: string; tone: 'info' | 'warn' | 'good' } | null> = {
+  evening: null,
+  night: { text: 'Night has settled over the village. Gather while the clouds hold.', tone: 'info' },
+  dawn: { text: 'The sky is lightening — no moon will rise again. Get to the temple before five.', tone: 'warn' },
 };
 
 /** How far each gait carries: sneaking is nearly nothing, running wakes the lane. */
@@ -42,6 +50,7 @@ export type GameplayActor = InteractionActor & ShelterActor & { readonly gait: '
 
 export class Gameplay {
   readonly inventory = new InventorySystem();
+  readonly night: NightClock;
   readonly moon: MoonManager;
   readonly exposure = new ExposureSystem();
   readonly interaction: InteractionSystem;
@@ -63,6 +72,9 @@ export class Gameplay {
   /** Cuts the closing puja short, while one is playing. */
   private skipCinematic: (() => void) | null = null;
   private readonly lastPos = { x: 0, z: 0, set: false };
+  private lastPhase: NightPhase = 'evening';
+  /** 05:00 came and went: the run is finishing, and nothing may finish it twice. */
+  private over = false;
   private readonly unsubscribers: Array<() => void> = [];
   private readonly sounds: Pick<SoundFx, 'play'> | null;
 
@@ -72,9 +84,11 @@ export class Gameplay {
     ambience: Ambience | null = null,
     seed = Date.now() % 100000,
     moon: MoonCycleConfig = DEFAULT_MOON_CONFIG,
+    night: NightConfig = DEFAULT_NIGHT_CONFIG,
   ) {
     this.sounds = sounds;
     this.audio = ambience ? new MoonAudioController(ambience, sounds) : null;
+    this.night = new NightClock(night);
     this.moon = new MoonManager(moon, seed);
     this.interaction = new InteractionSystem(physics, sounds);
     this.unsubscribers.push(
@@ -115,6 +129,7 @@ export class Gameplay {
     world.shelter?.attach(player, rig, () => this.moon.dangerous || this.moon.state === 'warning', (k) => this.sounds?.play(k));
     EventBus.emit('ui:inventory', this.inventory.snapshot());
     this.emitMoon();
+    this.emitNight();
     this.emitExposure();
   }
 
@@ -127,7 +142,14 @@ export class Gameplay {
       this.hear(dt, world);
       return;
     }
-    this.moon.update(dt);
+    this.night.update(dt);
+    this.moon.update(dt, { ticking: this.night.moonTicking, mayRise: this.night.moonMayRise });
+    if (this.night.phase !== this.lastPhase) {
+      this.lastPhase = this.night.phase;
+      const line = PHASE_LINE[this.lastPhase];
+      if (line) EventBus.emit('ui:toast', line);
+      this.emitMoon();
+    }
     this.interaction.update(dt, player, this.camera);
     if (interactPressed && !this.inventoryOpen && !world.shelter?.busy) this.interaction.tryBegin(player);
     world.shelter?.update(dt);
@@ -160,8 +182,12 @@ export class Gameplay {
     if (this.uiTimer <= 0) {
       this.uiTimer = 0.2;
       this.emitMoon();
+      this.emitNight();
       this.emitExposure();
     }
+
+    // Five o'clock. Whatever is in the bag stays in the bag.
+    if (this.night.done) this.dawnBreaks();
   }
 
   /** How much the player's own feet give them away, for the dogs. */
@@ -180,6 +206,10 @@ export class Gameplay {
       goingHome: this.moon.goingHome,
       dangerous: this.moon.dangerous,
       untilMoonlight: this.moon.untilMoonlight,
+      phase: this.night.phase,
+      nightBase: this.night.nightBase,
+      dawn: this.night.dawnBlend,
+      retired: this.night.phase === 'dawn' && this.moon.retired,
     };
   }
 
@@ -252,9 +282,21 @@ export class Gameplay {
     this.interaction.register(drop);
   }
 
+  /**
+   * 05:00. The moon has been gone for some minutes and the sky is up; whatever was not offered
+   * tonight was not offered. The run ends where it stands — scored for what it gathered, with
+   * none of what finishing the puja is worth.
+   */
+  private dawnBreaks(): void {
+    if (this.over || this.cinematic) return;
+    this.over = true;
+    EventBus.emit('ui:toast', { text: 'Five o’clock. The night is over.', tone: 'warn' });
+    EventBus.emit('run:completed', this.run.finish(this.inventory.snapshot().pujaComplete));
+  }
+
   /** Every offering is before Bappa: the closing sequence, then the results. */
   private completePuja(): void {
-    if (this.cinematic) return;
+    if (this.cinematic || this.over) return;
     this.cinematic = true;
     EventBus.emit('ui:cinematic', { active: true });
     let done = false;
@@ -263,8 +305,9 @@ export class Gameplay {
       done = true;
       this.skipCinematic = null;
       this.cinematic = false;
+      this.over = true;
       EventBus.emit('ui:cinematic', { active: false });
-      EventBus.emit('run:completed', this.run.finish());
+      EventBus.emit('run:completed', this.run.finish(true));
     };
     const world = this.world;
     const player = this.player;
@@ -285,7 +328,23 @@ export class Gameplay {
 
   private emitMoon(): void {
     const i = this.moon.info;
-    EventBus.emit('ui:moon', { state: this.moon.state, label: i.label, note: i.note, progress: this.moon.progress, dangerous: this.moon.dangerous });
+    const phase = this.night.phase;
+    // At dawn the sky itself is the news, not the state machine sitting on `safe`.
+    const retired = phase === 'dawn' && !this.moon.dangerous;
+    EventBus.emit('ui:moon', {
+      state: this.moon.state,
+      label: retired ? 'The sky is lightening' : phase === 'evening' ? 'The sun is going down' : i.label,
+      note: retired ? 'No moon will rise again' : phase === 'evening' ? undefined : i.note,
+      progress: this.moon.progress,
+      dangerous: this.moon.dangerous,
+      phase,
+      retired,
+    });
+  }
+
+  private emitNight(): void {
+    const n = this.night;
+    EventBus.emit('ui:night', { label: n.label, t: n.t, phase: n.phase, minutesLeft: n.minutesLeft });
   }
 
   private emitExposure(): void {

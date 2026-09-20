@@ -96,6 +96,48 @@ describe('MoonManager', () => {
     expect(lengths(7)).toEqual(lengths(7));
     expect(lengths(7)).not.toEqual(lengths(8));
   });
+
+  it('does not turn at all while the night clock holds it (the evening)', () => {
+    const m = new MoonManager();
+    for (let t = 0; t < 600; t += 0.05) m.update(0.05, { ticking: false, mayRise: false });
+    expect(m.state).toBe('safe');
+    expect(m.progress).toBe(0);
+  });
+
+  it('holds the clouds over the moon once no new moon may rise (dawn)', () => {
+    const m = new MoonManager();
+    for (let t = 0; t < 900; t += 0.05) m.update(0.05, { ticking: true, mayRise: false });
+    expect(m.state, 'no moon ever rose').toBe('safe');
+    expect(m.retired).toBe(true);
+    expect(m.dangerous).toBe(false);
+    expect(m.moonlight).toBe(0);
+  });
+
+  it('lets a moon caught by dawn fade away rather than snapping it off', () => {
+    const m = new MoonManager();
+    m.skipTo('active');
+    const seen: MoonStateName[] = [];
+    m.onState((s) => seen.push(s));
+    // Dawn arrives mid-moon: permission is withdrawn, but the sky is already lit.
+    for (let t = 0; t < 400; t += 0.05) m.update(0.05, { ticking: true, mayRise: false });
+    expect(seen, 'it finishes the cycle it was in, then stops').toEqual(['fading', 'safe']);
+    expect(m.retired).toBe(true);
+  });
+
+  it('rises again the moment the gate reopens', () => {
+    const m = new MoonManager();
+    for (let t = 0; t < 600; t += 0.05) m.update(0.05, { ticking: true, mayRise: false });
+    expect(m.state).toBe('safe');
+    m.update(0.05, { ticking: true, mayRise: true });
+    expect(m.state).toBe('warning');
+  });
+
+  it('winds a late arrival forward without letting the moon through a closed gate', () => {
+    const m = new MoonManager();
+    m.windForward(5000, { ticking: true, mayRise: false });
+    expect(m.state).toBe('safe');
+    expect(m.retired).toBe(true);
+  });
 });
 
 describe('ExposureSystem', () => {

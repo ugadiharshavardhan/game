@@ -13,7 +13,7 @@
  */
 
 import type { InventorySnapshot, ItemId } from './items';
-import type { ExposureLevel, GameSettings, MoonStateName, PlayerStateName, RunResult } from './types';
+import type { ExposureLevel, GameSettings, MoonStateName, NightPhase, PlayerStateName, RunResult } from './types';
 
 /** What the interaction prompt shows. Plain text only — React decides how it looks per device. */
 export interface PromptInfo {
@@ -70,7 +70,12 @@ export interface GameEventMap {
   /** A short message: "The bag is full", "You dropped 3 offerings". */
   'ui:toast': { text: string; tone: 'info' | 'warn' | 'good' };
   /** The moon's state, a few times a second: the sky in words, never a countdown. */
-  'ui:moon': { state: MoonStateName; label: string; note?: string; progress: number; dangerous: boolean };
+  'ui:moon': { state: MoonStateName; label: string; note?: string; progress: number; dangerous: boolean; phase: NightPhase; retired: boolean };
+  /**
+   * The night clock, a few times a second. This one *is* a countdown, and deliberately so: the
+   * moon is read from the sky, but 05:00 is a promise the game has to keep visibly.
+   */
+  'ui:night': { label: string; t: number; phase: NightPhase; minutesLeft: number };
   /** Exposure 0..100 and what to make of it. */
   'ui:exposure': { value: number; level: ExposureLevel; rising: boolean };
   /** The player is standing in the temple: show what the puja still wants. */

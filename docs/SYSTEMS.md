@@ -115,11 +115,32 @@ player walks out onto the veranda, the door shuts behind them. The bag and the r
 `shelter.test.ts` does this for every shelter with the real controller, and checks the camera
 against every wall on every frame, including through the doorway blends.
 
+## The night
+
+A run is one night, and only one. `src/game/night/NightClock.ts` runs 18:30 to 05:00 across 900
+real seconds — one real second is forty-two of the village's — and everything the run is bounded
+by hangs off it. It has three phases:
+
+| Phase | Fraction | The village |
+| --- | --- | --- |
+| `evening` | 0 – 0.10 | The sun going down. **The moon cycle does not turn at all.** |
+| `night` | 0.10 – 0.88 | The working hours. Three moonrises fit here. |
+| `dawn` | 0.88 – 1 | The sky lightens. **No new moon may rise, ever.** |
+
+At `t = 1` the run ends where it stands, scored with `pujaComplete: false` — see *The score*. A
+moon already out when dawn arrives is never snapped off: it finishes its fading and the clouds
+then stay for good (`MoonManager.retired`).
+
+The clock exposes `t`, `phase`, `label` ("1:12 AM"), `minutesLeft`, `done`, and two numbers the
+sky reads: `nightBase`, the darkness floor under the sky with no moon in it, and `dawnBlend`,
+0..1 of morning. `windForward(seconds)` puts a late arrival at a team's own hour of the night.
+
 ## The moon cycle
 
-`MoonState.ts` holds the five states and how long each lasts — safe 240 s, warning 30 s, rising
-20 s, active 60 s, fading 20 s, each ±8 % by seed, with the first safe stretch shortened to 150 s
-— and two curves every other system reads:
+`MoonState.ts` holds the five states and how long each lasts — safe 120 s, warning 25 s, rising
+18 s, active 55 s, fading 18 s, each ±8 % by seed, with the first safe stretch shortened to 45 s
+— about four minutes a turn, which is three moonrises inside the night's playable stretch — and
+two curves every other system reads:
 
 - `moonlightFor(state, progress)` → 0..1, how much moonlight is falling. It starts to climb
   during the *warning*, so the sky cools before the moon is up, and it is continuous across every
@@ -128,13 +149,21 @@ against every wall on every frame, including through the doorway blends.
   until the moon actually rises, so the whole warning is free.
 
 `MoonManager` is the state machine: `state`, `progress`, `moonlight`, `exposureRate`,
-`dangerous`, `goingHome`, `untilMoonlight`, `onState(listener)`, and `skipTo(state)` for the
-devtools. Nothing about it is astronomical; it is a timer with a nice curve on it.
+`dangerous`, `goingHome`, `untilMoonlight`, `retired`, `onState(listener)`, and `skipTo(state)`
+for the devtools. Nothing about it is astronomical; it is a timer with a nice curve on it.
+
+`update(dt, gate)` takes the night clock's permission with it — `ticking` (false in the evening)
+and `mayRise` (false in the evening and, for good, from dawn). The gate can only hold the cycle
+at `safe`, which is why a moon caught by dawn always gets to fade out first.
 
 ## What the moon changes
 
 **Light** (`MoonLightingController`). Four written-down moments — SUNSET, DUSK, MOONRISE,
-MOONLIGHT — interpolated by `moonlight`, driving one directional light, one hemisphere light, the
+MOONLIGHT — interpolated by the sky key, which is whichever is higher of the night clock's
+`nightBase` and the `moonlight` actually falling. The floor is what stops a cloudy stretch at one
+in the morning from being lit like the sunset the curve starts on. A fifth look, DAWN, sits off
+the curve and is blended over the top of it by `dawnBlend`: a low sun from the *other* horizon,
+the stars going out. Together they drive one directional light, one hemisphere light, the
 sky shader, the fog, the exposure and the stars. The light is the sun until it sets and the moon
 after; the hand-over happens at the darkest minute of dusk, when almost nothing is lit, so the
 change of direction cannot be seen. The moon rises as the night goes on (4° → 38°), the village's
@@ -193,8 +222,14 @@ seconds and can be skipped at any point.
 
 Then the results (`ui/components/ResultsScreen.tsx`): offerings collected and lost, doors reached
 in time, moonlight encounters, time taken, route efficiency, and the score — items, shelter,
-efficiency, time bonus, penalties — kept by `run/RunTracker.ts`. Play again remounts the engine
-from nothing.
+efficiency, the puja itself, time bonus, penalties — kept by `run/RunTracker.ts`. Play again
+remounts the engine from nothing.
+
+A run can also end without a puja, when 05:00 arrives first. Those runs carry
+`stats.pujaComplete: false`; they are scored for everything they gathered, but the puja's own
+1200 and the bonus for being quick both go to zero, and the screen says *Dawn broke first* rather
+than *Puja complete*. The server's validator knows the difference: it only demands the puja's 25
+offerings of a run that claims to have finished one.
 
 ## Playing together
 

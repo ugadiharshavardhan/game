@@ -10,6 +10,7 @@
  * doing the work.
  */
 import { EventBus } from '../../shared/EventBus';
+import type { NightConfig } from '../night/NightClock';
 import type { MoonCycleConfig } from '../moon/MoonState';
 import type { Gameplay } from '../Gameplay';
 import type { World } from '../world/World';
@@ -19,6 +20,20 @@ export const TUTORIAL_MOON: MoonCycleConfig = {
   durations: { safe: 60, warning: 14, rising: 8, active: 20, fading: 8 },
   firstSafe: 42,
   jitter: 0,
+};
+
+/**
+ * The tutorial's night: already dark when it opens, so the moon may rise the moment the director
+ * asks for it, and with no 05:00 in it at all — a guided walk is not a run, and must never be
+ * cut short by a dawn the player was never told about.
+ */
+export const TUTORIAL_NIGHT: NightConfig = {
+  seconds: 3600,
+  startHour: 21,
+  endHour: 5,
+  evening: 0,
+  dawn: 1,
+  ends: false,
 };
 
 interface Step {
@@ -47,7 +62,7 @@ interface Context {
 const STEPS: Step[] = [
   {
     title: 'Walk to the flowers',
-    hint: 'WASD or the stick. The marigolds are just ahead, by the house.',
+    hint: 'WASD or the stick. Hold Shift to run, Space to jump. The marigolds are just ahead, by the house.',
     done: (c) => c.gameplay.interaction.target?.id.startsWith('item:') === true,
     timeout: 45,
   },

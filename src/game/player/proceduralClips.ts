@@ -402,6 +402,44 @@ const NAMASTE: Pose = {
 /** …and a bow over them. */
 const BOW: Pose = { ...NAMASTE, turns: [...NAMASTE.turns, ['Spine', 'x', 22], ['Spine1', 'x', 8], ['Head', 'x', 24]] };
 
+/**
+ * Off the ground: the trailing leg tucked, the leading one reaching, arms out for balance.
+ *
+ * `plant` is off — every other pose solves the hips so the lower foot meets the floor, which is
+ * exactly wrong in mid-air: it would drag the character back down to the ground it just left.
+ */
+const AIRBORNE: Pose = {
+  turns: [
+    ['Spine', 'x', 8],
+    ['Spine1', 'x', 4],
+    ['Head', 'x', -6],
+    ...armsDown(-18, -34),
+    ['LeftArm', 'z', -46],
+    ['RightArm', 'z', 46],
+    ['LeftArm', 'x', -18],
+    ['RightArm', 'x', -14],
+    ['LeftUpLeg', 'x', -46],
+    ['LeftLeg', 'x', 78],
+    ['LeftFoot', 'x', -18],
+    ['RightUpLeg', 'x', -12],
+    ['RightLeg', 'x', 26],
+    ['RightFoot', 'x', -16],
+  ],
+  plant: false,
+};
+
+/** The same, a breath later: enough motion that a long fall does not look like a photograph. */
+const AIRBORNE_B: Pose = {
+  ...AIRBORNE,
+  turns: [
+    ...AIRBORNE.turns,
+    ['LeftUpLeg', 'x', 8],
+    ['RightUpLeg', 'x', -10],
+    ['LeftArm', 'z', -6],
+    ['RightArm', 'z', 6],
+  ],
+};
+
 // ---- the clips ----------------------------------------------------------------------------------
 
 /**
@@ -471,6 +509,9 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
   clips.push(rig.clip('Celebrate', 2.2, fps, keyed([[0, STAND], [0.5, NAMASTE], [0.9, BOW], [1.35, BOW], [1.75, NAMASTE], [2.2, STAND]])));
   clips.push(rig.clip('EnterHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));
   clips.push(rig.clip('ExitHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));
+  // Held while the feet are off the ground, and looped: the blend weight, not the clip, says how
+  // long a jump lasts, so one pose covers a hop off a step and a drop from the temple plinth.
+  clips.push(rig.clip('Jump', 0.9, fps, keyed([[0, AIRBORNE], [0.45, AIRBORNE_B], [0.9, AIRBORNE]])));
   rig.reset();
   model.updateMatrixWorld(true);
   return clips;

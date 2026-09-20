@@ -65,10 +65,10 @@ describe('the guided walk', () => {
 
     run(tutorial, 3);
     expect(steps.at(-1)?.title, 'it does not move on until the moon has').toMatch(/window/i);
-    EventBus.emit('ui:moon', { state: 'active', label: 'Moonlight', progress: 0.5, dangerous: true });
+    EventBus.emit('ui:moon', { state: 'active', label: 'Moonlight', progress: 0.5, dangerous: true, phase: 'night', retired: false });
     run(tutorial, 1);
     expect(steps.at(-1)?.title).toMatch(/window/i);
-    EventBus.emit('ui:moon', { state: 'fading', label: 'The clouds gather again', progress: 0.1, dangerous: false });
+    EventBus.emit('ui:moon', { state: 'fading', label: 'The clouds gather again', progress: 0.1, dangerous: false, phase: 'night', retired: false });
     run(tutorial, 0.5);
     expect(steps.at(-1)?.title).toMatch(/outside/i);
 

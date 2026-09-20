@@ -33,7 +33,8 @@ import { DEFAULT_MOON_CONFIG } from '../moon/MoonState';
 import { GhostPlayers } from '../multiplayer/GhostPlayers';
 import type { PeerLink } from '../multiplayer/PeerLink';
 import { buildProceduralClips } from '../player/proceduralClips';
-import { Tutorial, TUTORIAL_MOON } from '../tutorial/Tutorial';
+import { DEFAULT_NIGHT_CONFIG } from '../night/NightClock';
+import { Tutorial, TUTORIAL_MOON, TUTORIAL_NIGHT } from '../tutorial/Tutorial';
 import { Input } from './Input';
 import { Physics } from './Physics';
 import { profileFor, type QualityProfile } from './quality';
@@ -137,8 +138,17 @@ export class Engine {
     const seed = session?.seed ?? (Number(params.get('seed')) || Date.now() % 100000);
     // The guided walk runs a night in miniature, so a whole moonrise fits inside two minutes.
     const moonConfig = this.options.tutorial ? TUTORIAL_MOON : DEFAULT_MOON_CONFIG;
-    const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed, moonConfig));
-    if (session?.elapsed) gameplay.moon.windForward(session.elapsed);
+    const nightConfig = this.options.tutorial ? TUTORIAL_NIGHT : DEFAULT_NIGHT_CONFIG;
+    const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed, moonConfig, nightConfig));
+    if (session?.elapsed) {
+      // The night first, then the moon through the gate that night leaves open: a player who
+      // joins a team's village late arrives at the same hour, under the same sky, as everyone in it.
+      gameplay.night.windForward(session.elapsed);
+      gameplay.moon.windForward(session.elapsed, {
+        ticking: gameplay.night.moonTicking,
+        mayRise: gameplay.night.moonMayRise,
+      });
+    }
     const buildWorld = async (): Promise<World> => {
       if (params.get('scene') === 'testbed') return buildTestbed(this.scene, this.renderer, physics);
       const { buildVillage } = await import('../world/village/Village');
@@ -275,8 +285,9 @@ export class Engine {
       this.world?.follow(this.player.feet);
       const moon = this.gameplay.moonFrame();
       this.world?.update?.(dt, this.player.feet, { camera: this.camera, moon, noise: this.gameplay.noise() });
-      // A little more glow off the diyas once the sky is dark — a little, not a haze.
-      if (this.bloom) this.bloom.strength = DAY_BLOOM + (NIGHT_BLOOM - DAY_BLOOM) * moon.moonlight;
+      // A little more glow off the diyas once the sky is dark — a little, not a haze. It follows
+      // the sky the night actually has, not just the moon: a cloudy 1 a.m. is dark too.
+      if (this.bloom) this.bloom.strength = DAY_BLOOM + (NIGHT_BLOOM - DAY_BLOOM) * Math.max(moon.nightBase, moon.moonlight);
       this.input.endFrame();
       // Teammates: tell them where we are, then draw where they are.
       this.options.link?.send({

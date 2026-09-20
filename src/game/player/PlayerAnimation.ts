@@ -22,6 +22,8 @@ export type PlayerAction = (typeof PlayerAction)[keyof typeof PlayerAction];
 
 const LOCOMOTION = ['Idle', 'SlowWalk', 'Walk', 'Run'] as const;
 const CROUCH = ['CrouchIdle', 'CrouchWalk'] as const;
+/** Held while the feet are off the ground; blended over the gaits like the crouch is. */
+const AIR = 'Jump';
 /** When a clip is missing, how long the gameplay effect of an action takes. */
 const FALLBACK_ACTION_SECONDS = 0.9;
 
@@ -35,8 +37,12 @@ interface RunningAction {
 
 /**
  * Drives the character's AnimationMixer as a small blend tree:
- * a 1D locomotion blend on speed, a crouch blend, phase-synced strides,
+ * a 1D locomotion blend on speed, a crouch blend, an airborne blend, phase-synced strides,
  * playback rate matched to ground speed, and one-shot actions on top.
+ *
+ * The airborne pose is weighted in rather than played as a one-shot, so a jump lasts exactly as
+ * long as the feet are actually off the ground — a hop off a step and a drop from the temple
+ * plinth are the same clip, held for different lengths of time.
  */
 export class PlayerAnimation {
   private readonly mixer: AnimationMixer;
@@ -45,7 +51,9 @@ export class PlayerAnimation {
   private readonly nativeLoco: number[];
   private readonly nativeCrouch: number[];
   private readonly clips = new Map<string, AnimationClip>();
+  private readonly air: AnimationAction | null;
   private crouchWeight = 0;
+  private airWeight = 0;
   private actionWeight = 0;
   private running: RunningAction | null = null;
   readonly missingClips: string[] = [];
@@ -79,6 +87,7 @@ export class PlayerAnimation {
     };
     this.loco = LOCOMOTION.map(start);
     this.crouch = CROUCH.map(start);
+    this.air = start(AIR);
     this.nativeLoco = LOCOMOTION.map((n) => native.get(n) ?? 0);
     this.nativeCrouch = CROUCH.map((n) => native.get(n) ?? 0);
     for (const a of Object.values(PlayerAction)) if (!this.clips.has(a)) this.missingClips.push(a);
@@ -88,17 +97,21 @@ export class PlayerAnimation {
     return this.running !== null;
   }
 
-  update(dt: number, speed: number, crouched: boolean): void {
+  update(dt: number, speed: number, crouched: boolean, airborne = false): void {
     const c = this.config;
     const k = 1 - Math.exp(-dt / Math.max(c.blendTime, 1e-3));
     this.crouchWeight += ((crouched ? 1 : 0) - this.crouchWeight) * (1 - Math.exp(-dt / 0.12));
+    // Quick off the ground, softer back onto it: a landing should settle, not snap.
+    this.airWeight += ((airborne ? 1 : 0) - this.airWeight) * (1 - Math.exp(-dt / (airborne ? 0.07 : 0.12)));
     this.actionWeight += ((this.running ? 1 : 0) - this.actionWeight) * (1 - Math.exp(-dt / c.actionFadeTime));
     const free = 1 - this.actionWeight;
+    const onFoot = free * (1 - this.airWeight);
 
     const gait = [0, c.slowWalkSpeed, c.walkSpeed, c.runSpeed];
     const crouchGait = [0, c.crouchSpeed];
-    this.drive(this.loco, blendWeights(speed, gait), (1 - this.crouchWeight) * free, k);
-    this.drive(this.crouch, blendWeights(speed, crouchGait), this.crouchWeight * free, k);
+    this.drive(this.loco, blendWeights(speed, gait), (1 - this.crouchWeight) * onFoot, k);
+    this.drive(this.crouch, blendWeights(speed, crouchGait), this.crouchWeight * onFoot, k);
+    this.drive([this.air], [1], this.airWeight * free, k);
 
     const locoRate = motionSpeedMultiplier(speed, gait, this.nativeLoco, c.minMotionSpeed, c.maxMotionSpeed);
     const crouchRate = motionSpeedMultiplier(speed, crouchGait, this.nativeCrouch, c.minMotionSpeed, c.maxMotionSpeed);

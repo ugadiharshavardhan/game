@@ -3,10 +3,11 @@ import { ITEMS, ITEM_IDS } from '../../shared/items';
 /** Short enough to read standing up: what you are doing, and the one rule that matters. */
 export function HowToPlay({ onBack, onTutorial }: { onBack: () => void; onTutorial: () => void }) {
   const lines: Array<[string, string]> = [
+    ['One night', 'You arrive at half past six in the evening. At five in the morning the night is over, finished or not.'],
     ['Gather', 'Seven kinds of offering are scattered around the village. Your bag holds fifteen, so it takes more than one trip.'],
-    ['Watch the sky', 'The lamps go up, the birds go quiet, a bell rings, the villagers go home. That means the moon is coming.'],
-    ['Step inside', 'Any door with a lamp beside it opens. Indoors the moonlight cannot touch you; outside it builds up.'],
-    ['Offer', 'Carry everything to the temple and give it to Bappa. When the last offering is placed, the puja begins.'],
+    ['Watch the sky', 'While the clouds cover the moon, work. The lamps go up, the birds go quiet, a bell rings, the villagers go home — that means the clouds are thinning.'],
+    ['Step inside', 'Any door with a lamp beside it opens. Under a clear moon, indoors is the only place it cannot reach you; outside it builds up until you drop what you are carrying.'],
+    ['Offer', 'Carry everything to the temple and give it to Bappa. After the sky begins to lighten no moon rises again — that last hour is yours, and it is the last one you get.'],
   ];
   return (
     <div className="w-full max-w-md text-left">
@@ -23,6 +24,7 @@ export function HowToPlay({ onBack, onTutorial }: { onBack: () => void; onTutori
         <Control keys="WASD / stick" what="Move" />
         <Control keys="Mouse / drag" what="Look" />
         <Control keys="Shift" what="Run" />
+        <Control keys="Space" what="Jump" />
         <Control keys="C" what="Sneak" />
         <Control keys="E / COLLECT" what="Interact" />
         <Control keys="I or Tab / BAG" what="The bag" />

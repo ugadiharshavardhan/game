@@ -5,6 +5,8 @@
  *   __seva.teleport(x, z, yawDeg)   __seva.look(yawDeg, pitchDeg)   __seva.info()
  *   await __seva.walkTo(x, z, { run, sneak })  — autopilot over the nav grid, real controller
  *   __seva.moon('active')   __seva.give('flowers', 3)   __seva.interact()
+ *   __seva.night(0.9)  — wind the clock to a fraction of the night (0 = 6:30 PM, 1 = 5 AM)
+ *   __seva.jump()  — one hop, as if Space had been pressed
  *   __seva.ghost('Arjun', x, z, 'walking') / __seva.unghost()  — stand-in teammates
  *   await __seva.enter('patil') / __seva.leave()  — a shelter's door sequence, for real
  */
@@ -120,7 +122,20 @@ export async function installDevtools(h: DevHandle): Promise<void> {
       });
     },
     moon(state: MoonStateName) {
+      // The moon cannot turn during the evening, so a moon asked for in dev brings the night on.
+      if (h.gameplay.night.phase === 'evening') h.gameplay.night.windForward(1);
       h.gameplay.moon.skipTo(state);
+    },
+    /** Wind the night clock to a fraction of itself: 0 is half past six, 1 is five in the morning. */
+    night(t: number) {
+      const clock = h.gameplay.night;
+      const want = Math.min(Math.max(t, 0), 1);
+      if (want > clock.t) clock.windForward((want - clock.t) * clock.seconds);
+      return { at: clock.label, phase: clock.phase };
+    },
+    /** One hop. The controller sees exactly what a Space press looks like. */
+    jump() {
+      h.input.jumpPressed = true;
     },
     /** A stand-in teammate, for looking at ghosts without a second player. */
     ghost(name = 'Arjun', x = 0, z = 0, state = 'idle') {
@@ -179,6 +194,9 @@ export async function installDevtools(h: DevHandle): Promise<void> {
         safe: h.world.shelter?.isSafe ?? false,
         shelter: h.world.shelter?.current?.houseId ?? null,
         moon: h.gameplay.moon.state,
+        night: { at: h.gameplay.night.label, phase: h.gameplay.night.phase, t: +h.gameplay.night.t.toFixed(3), minutesLeft: h.gameplay.night.minutesLeft },
+        grounded: h.player.controller.grounded,
+        airborne: h.player.controller.airborne,
         exposure: Math.round(h.gameplay.exposure.value),
         bag: h.gameplay.inventory.snapshot(),
         target: h.gameplay.interaction.target?.id ?? null,

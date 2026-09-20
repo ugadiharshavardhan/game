@@ -1,6 +1,6 @@
 import type { Camera, DirectionalLight, Vector3 } from 'three';
 import type { InventoryStack, ItemId } from '../../shared/items';
-import type { MoonStateName } from '../../shared/types';
+import type { MoonStateName, NightPhase } from '../../shared/types';
 import type { SoundKey } from '../audio/SoundFx';
 import type { IInteractable } from '../interaction/IInteractable';
 import type { InventorySystem } from '../inventory/InventorySystem';
@@ -29,6 +29,17 @@ export interface MoonFrame {
   dangerous: boolean;
   /** Seconds until the light starts to bite (0 once it has). */
   untilMoonlight: number;
+  /** Where the night has got to: evening, night, or dawn. */
+  phase: NightPhase;
+  /**
+   * 0..1 floor under the sky on the lighting curve — the village's own darkness with no moon in
+   * it. The sky follows whichever is higher, this or `moonlight`.
+   */
+  nightBase: number;
+  /** 0..1 of morning blended over the top of everything. 0 until dawn. */
+  dawn: number;
+  /** No further moon will rise tonight. */
+  retired: boolean;
 }
 
 export interface WorldFrame {

@@ -51,15 +51,21 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
 
   if (view !== 'result') return <Boards initial={view === 'teams' ? 'teams' : 'individual'} onBack={() => setView('result')} />;
 
+  // Dawn ended the run instead of the puja doing it. Everything gathered still counts; the two
+  // things that only a finished puja earns are shown as the zeroes they are, not hidden.
+  const done = stats.pujaComplete;
+
   const rows: [string, number][] = [
     ['Items', breakdown.items],
     ['Shelter', breakdown.shelter],
     ['Efficiency', breakdown.efficiency],
+    ['Puja complete', breakdown.completion],
     ['Time bonus', breakdown.timeBonus],
     ['Penalties', breakdown.penalties],
   ];
 
   const facts: [string, string][] = [
+    ['Puja', done ? 'Completed' : 'Unfinished'],
     ['Offerings collected', `${stats.itemsCollected}`],
     ['Offerings lost', `${stats.itemsLost}`],
     ['Sheltered in time', `${stats.shelterEvents}`],
@@ -73,10 +79,20 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
       <div className="w-full max-w-lg text-center">
         <p className="text-[10px] uppercase tracking-[0.45em] text-dusk-400">Moonlight Seva</p>
         <h1 className="mt-3 font-display text-3xl text-lamp-200 sm:text-4xl">
-          Puja complete <span aria-hidden>🙏</span>
+          {done ? (
+            <>
+              Puja complete <span aria-hidden>🙏</span>
+            </>
+          ) : (
+            <>
+              Dawn broke first <span aria-hidden>🌅</span>
+            </>
+          )}
         </h1>
         <p className="mt-2 text-sm text-lamp-200/70">
-          {profile ? `${profile.displayName} — every offering is before Bappa.` : 'Every offering is before Bappa.'} Ganpati Bappa Morya!
+          {done
+            ? `${profile ? `${profile.displayName} — every` : 'Every'} offering is before Bappa. Ganpati Bappa Morya!`
+            : `It is five o’clock and the village is waking. ${missingKinds(stats)} Come back tonight.`}
         </p>
 
         <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-2 text-left text-xs">
@@ -173,3 +189,9 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
 }
 
 export type { LeaderboardEntry };
+
+/** One plain sentence about how close the run got, for a night that ran out. */
+function missingKinds(stats: { itemsCollected: number }): string {
+  if (stats.itemsCollected === 0) return 'You gathered nothing before the moon and the hours took the night.';
+  return `You gathered ${stats.itemsCollected} ${stats.itemsCollected === 1 ? 'offering' : 'offerings'}, but they never reached the temple.`;
+}

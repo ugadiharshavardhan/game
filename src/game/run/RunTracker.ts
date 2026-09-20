@@ -26,6 +26,7 @@ export class RunTracker {
     durationMs: 0,
     distanceTravelled: 0,
     exposedSeconds: 0,
+    pujaComplete: false,
   };
 
   private readonly startedAt = Date.now();
@@ -65,9 +66,14 @@ export class RunTracker {
     this.stats.exposedSeconds = seconds;
   }
 
-  /** The finished run: stats, efficiency and the score breakdown. */
-  finish(): RunResult {
-    const stats: RunStats = { ...this.stats, durationMs: Date.now() - this.startedAt };
+  /**
+   * The finished run: stats, efficiency and the score breakdown.
+   *
+   * @param pujaComplete every offering was before Bappa before 05:00. False when dawn ended the
+   *   run instead — those runs are scored honestly for what they gathered and no more.
+   */
+  finish(pujaComplete: boolean): RunResult {
+    const stats: RunStats = { ...this.stats, pujaComplete, durationMs: Date.now() - this.startedAt };
     const { breakdown, efficiency } = scoreRun(stats, this.weights);
     return { stats, breakdown, efficiency, completedAt: Date.now() };
   }

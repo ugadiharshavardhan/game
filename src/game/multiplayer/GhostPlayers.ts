@@ -98,7 +98,7 @@ export class GhostPlayers {
       // Their animation is driven by how fast they are actually travelling, so a ghost's feet
       // match its motion however the packets arrive.
       const speed = dt > 0 ? Math.min(moved / dt, this.config.runSpeed * 1.2) : 0;
-      ghost.animation.update(dt, peer.state === 'idle' ? 0 : speed, peer.state === 'sneaking');
+      ghost.animation.update(dt, peer.state === 'idle' ? 0 : speed, peer.state === 'sneaking', peer.state === 'jumping');
 
       const distance = Math.hypot(peer.x - this.cameraAt.x, peer.z - this.cameraAt.z);
       const fade = peer.presence * (distance > TAG_FAR ? 0 : 1);
