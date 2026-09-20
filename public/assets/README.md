@@ -9,5 +9,6 @@ paths as strings at runtime, so they must not be renamed by the bundler.
 UI images that React imports directly (`import logo from './logo.svg'`) are the
 opposite case and belong in `src/`, where Vite can hash and inline them.
 
-Phase 0 ships no files here on purpose — placeholder art is generated at runtime
+Phase 0  ships no files here on purpose — placeholder art is generated at runtime
 in `src/game/graphics/placeholderTextures.ts`.
+ 
