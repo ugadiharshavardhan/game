@@ -628,6 +628,8 @@ function moonMaterials(a: ArtContext): MoonMaterials {
   );
   const mats: MoonMaterials = { beam, patch, meshes: [] };
   a.tick.push(() => {
+    // The moon's own light, never the night's darkness: with no moon out there is no shaft in
+    // here. These are large additive quads across a small room, so leaving them on would wash it.
     uMoon.value = a.shared.moonlight;
     const on = uMoon.value > 0.01;
     for (const m of mats.meshes) m.visible = on;

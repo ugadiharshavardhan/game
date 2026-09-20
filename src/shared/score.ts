@@ -11,6 +11,8 @@ export interface ScoreWeights {
   perItem: number;
   perShelter: number;
   efficiencyMax: number;
+  /** Offerings the puja asks for: efficiency is only earned in proportion to how many were gathered. */
+  efficiencyItems: number;
   /** The puja finished before 05:00. The single largest thing a run can be worth. */
   completion: number;
   /** The route a careful player walks, metres: the yardstick for efficiency. */
@@ -27,6 +29,7 @@ export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   perItem: 40,
   perShelter: 250,
   efficiencyMax: 1000,
+  efficiencyItems: 25,
   completion: 1200,
   efficientMetres: 900,
   targetSeconds: 600,
@@ -50,7 +53,9 @@ export function scoreRun(stats: RunStats, w: ScoreWeights = DEFAULT_SCORE_WEIGHT
   const breakdown: ScoreBreakdown = {
     items: stats.itemsCollected * w.perItem,
     shelter: stats.shelterEvents * w.perShelter,
-    efficiency: Math.round(efficiency * w.efficiencyMax),
+    // A short walk that gathered nothing is not an efficient run, it is a run that did nothing:
+    // the bonus scales with how much of the puja was actually gathered.
+    efficiency: Math.round(efficiency * w.efficiencyMax * Math.min(stats.itemsCollected / w.efficiencyItems, 1)),
     completion: done ? w.completion : 0,
     // Capped: a quick run is worth a lot, but never more than gathering the offerings was.
     timeBonus: done ? Math.min(Math.max(0, Math.round((w.targetSeconds - stats.durationMs / 1000) * w.perSecond)), w.timeMax) : 0,
@@ -110,7 +115,9 @@ export function validateStats(stats: RunStats, limits: RunLimits = DEFAULT_RUN_L
   if (stats.itemsCollected > limits.maxItems) return 'more offerings than the village holds';
   if (seconds < limits.minSeconds) return 'finished faster than the village can be walked';
   if (seconds > limits.maxSeconds) return 'longer than a night';
-  if (stats.distanceTravelled < limits.minMetres) return 'the offerings are further apart than that';
+  // Only a finished puja proves the ground was covered: a night spent standing still is a real
+  // (and very poor) run, and it belongs on the board as exactly that.
+  if (stats.pujaComplete && stats.distanceTravelled < limits.minMetres) return 'the offerings are further apart than that';
   if (stats.distanceTravelled > limits.maxMetres) return 'further than anyone walks in a night';
   if (stats.shelterEvents > limits.maxShelterEvents) return 'more doors than there are';
   if (stats.overwhelmed > limits.maxOverwhelmed) return 'caught out too many times to be a run';

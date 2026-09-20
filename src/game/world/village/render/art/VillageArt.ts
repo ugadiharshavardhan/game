@@ -72,7 +72,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     lamps: new LampPool(root, ctx.quality.lamps),
     culler: new Culler(ctx.quality.detail),
     ground: null,
-    shared: { templeGlow: 0, moonlight: 0, goingHome: false, dangerous: false, noise: 0, player: new Vector3() },
+    shared: { templeGlow: 0, night: 0, moonlight: 0, goingHome: false, dangerous: false, noise: 0, player: new Vector3() },
     tick: [],
   };
 
@@ -123,24 +123,25 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     doorHinges,
     puja,
     itemVisuals: items.visuals,
-    makeDropVisual: items.makeDropVisual,
     itemIcons: items.icons,
     update(dt, frame) {
       frame.camera.getWorldPosition(camPos);
       a.shared.templeGlow = frame.templeGlow;
+      a.shared.night = frame.night;
       a.shared.moonlight = frame.moonlight;
       a.shared.goingHome = frame.goingHome;
       a.shared.dangerous = frame.dangerous;
       a.shared.noise = frame.noise;
       a.shared.player.copy(frame.player);
-      const flicker = 0.9 + 0.07 * Math.sin(frame.time * 9.3) + 0.04 * Math.sin(frame.time * 23.1);
+
       // As the sky cools, the village's own fire comes up to meet it: diyas, lamps and lit
       // windows carry the warm half of the night's contrast (MoonLightingController has the cool).
-      const warmth = 1 + 0.45 * frame.moonlight;
-      a.flames.update(frame.time, 1 + 0.3 * frame.moonlight);
-      a.lamps.update(dt, camPos, flicker * warmth);
+      const warmth = 1 + 0.45 * frame.night;
+      a.flames.update(frame.time, 1 + 0.3 * frame.night);
+      // The pool makes each lamp's own flicker; it wants the brightness, not a shared wobble.
+      a.lamps.update(dt, camPos, warmth);
       lamplit.emissiveIntensity = 1.6 * warmth;
-      interior.emissiveIntensity = 0.6 * (1 + 0.8 * frame.moonlight);
+      interior.emissiveIntensity = 0.6 * (1 + 0.8 * frame.night);
       a.culler.update(dt, camPos);
       for (const t of a.tick) t(dt, frame.time, camPos);
       fallback.update(dt, frame);

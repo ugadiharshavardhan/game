@@ -46,6 +46,12 @@ describe('scoreRun', () => {
     expect(unfinished.total).toBeGreaterThan(0);
   });
 
+  it('earns no route efficiency for a night that gathered nothing', () => {
+    const idle = scoreRun(stats({ pujaComplete: false, itemsCollected: 0, shelterEvents: 0, distanceTravelled: 300 })).breakdown;
+    expect(idle.efficiency).toBe(0);
+    expect(idle.total).toBe(0);
+  });
+
   it('is always worth finishing', () => {
     const finished = scoreRun(stats()).breakdown.total;
     const not = scoreRun(stats({ pujaComplete: false })).breakdown.total;
@@ -61,6 +67,10 @@ describe('validateStats', () => {
   it('accepts a run that ran out of night with almost nothing in the bag', () => {
     expect(validateStats(stats({ pujaComplete: false, itemsCollected: 3 }))).toBeNull();
     expect(validateStats(stats({ pujaComplete: false, itemsCollected: 0 }))).toBeNull();
+  });
+
+  it('lets a failed run through even if the player barely moved', () => {
+    expect(validateStats(stats({ pujaComplete: false, itemsCollected: 0, distanceTravelled: 0, shelterEvents: 0 }))).toBeNull();
   });
 
   it('still refuses a run that claims a puja it could not have finished', () => {

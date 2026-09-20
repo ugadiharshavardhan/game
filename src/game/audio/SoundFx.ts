@@ -6,6 +6,7 @@
  * Each recipe is a few lines of additive or filtered-noise synthesis in plain TypeScript.
  */
 import type { AudioBank } from '../core/AudioBank';
+import { WET } from './reverb';
 
 export type SoundKey =
   | 'collect'
@@ -24,7 +25,9 @@ export type SoundKey =
   | 'drop'
   | 'bag-open'
   | 'bag-close'
-  | 'bark';
+  | 'bark'
+  | 'jump'
+  | 'land';
 
 const VOLUME: Record<SoundKey, number> = {
   collect: 0.35,
@@ -44,6 +47,63 @@ const VOLUME: Record<SoundKey, number> = {
   'bag-open': 0.3,
   'bag-close': 0.3,
   bark: 0.45,
+  jump: 0.3,
+  land: 0.5,
+};
+
+/**
+ * How much of each sound is also heard in the space around it. Bells and gongs exist to ring, so
+ * they get the most; a door is a big object in a lane, so a little; the things in your hands and
+ * under your feet stay dry.
+ */
+const SEND: Record<SoundKey, number> = {
+  collect: WET.room,
+  rustle: WET.dry,
+  thunk: WET.room,
+  grain: WET.dry,
+  clay: WET.room,
+  deny: WET.dry,
+  'door-open': WET.room,
+  'door-close': WET.room,
+  knock: WET.room,
+  bell: WET.ring,
+  offer: WET.ring,
+  moonrise: WET.ring,
+  moonset: WET.ring,
+  drop: WET.room,
+  'bag-open': WET.dry,
+  'bag-close': WET.dry,
+  bark: WET.room,
+  jump: WET.dry,
+  land: WET.dry,
+};
+
+/**
+ * How far each sound wanders from itself between plays, as a fraction of pitch. The same chime at
+ * the same pitch fifty times a night is what makes synthesised sound read as synthesised; a couple
+ * of per cent either way is enough to stop it, and too little to hear as out of tune. Tonal
+ * sounds (bells, the gong) hold their pitch — they are tuned to each other — and vary only in level.
+ */
+const DRIFT: Record<SoundKey, number> = {
+  collect: 0.025,
+  rustle: 0.06,
+  thunk: 0.05,
+  grain: 0.05,
+  clay: 0.04,
+  deny: 0.03,
+  'door-open': 0.04,
+  'door-close': 0.03,
+  knock: 0.04,
+  bell: 0,
+  offer: 0,
+  moonrise: 0,
+  moonset: 0,
+  drop: 0.04,
+  'bag-open': 0.05,
+  'bag-close': 0.05,
+  bark: 0.06,
+  jump: 0.05,
+  land: 0.06,
 };
 
 /** Sounds layered on top of a pickup: every item gets the chime plus its own material. */
@@ -62,7 +122,9 @@ export class SoundFx {
   }
 
   play(key: SoundKey, volume = 1, rate = 1): void {
-    this.bank.play(`fx:${key}`, 0, VOLUME[key] * volume, rate);
+    const drift = 1 + (Math.random() * 2 - 1) * DRIFT[key];
+    const level = 1 + (Math.random() * 2 - 1) * 0.1;
+    this.bank.play(`fx:${key}`, 0, VOLUME[key] * volume * level, rate * drift, SEND[key]);
   }
 }
 
@@ -236,6 +298,10 @@ const RECIPES: Record<SoundKey, (rate: number) => Float32Array> = {
   // The cloth bag: a short brush of fabric up, or down.
   'bag-open': (rate) => noiseBurst(rate, 0.22, (t) => Math.sin(Math.min(t / 0.22, 1) * Math.PI), (t) => 1200 + 5000 * t, 1.4, 41),
   'bag-close': (rate) => noiseBurst(rate, 0.2, (t) => Math.sin(Math.min(t / 0.2, 1) * Math.PI), (t) => 2400 - 5000 * t, 1.4, 42),
+  // Off the ground: a quick brush of cloth and a breath of effort, nothing tonal.
+  jump: (rate) => mix(noiseBurst(rate, 0.16, (t) => Math.sin(Math.min(t / 0.16, 1) * Math.PI) ** 1.5, (t) => 900 + 2600 * t, 1.1, 61), thump(rate, 150, 110, 0.06, 62), 0, 0.25),
+  // Back on it: a soft thud through the knees and a slap of cloth settling.
+  land: (rate) => mix(thump(rate, 105, 62, 0.22, 63), noiseBurst(rate, 0.14, (t) => Math.exp(-t / 0.05), () => 1500, 0.9, 64), 0, 0.5),
   // A village dog: one bark, throat and air together, with the pitch falling off the end of it.
   bark: (rate) => {
     const voice = partials(rate, 0.22, [[310, 1, 0.055], [620, 0.45, 0.04], [930, 0.22, 0.03], [1500, 0.1, 0.02]], 0.006, 2.5);

@@ -1,5 +1,7 @@
 import type { Camera, DirectionalLight, Vector3 } from 'three';
-import type { InventoryStack, ItemId } from '../../shared/items';
+import type { ItemId } from '../../shared/items';
+import type { MapSource } from '../map/MapSystem';
+import type { VillageLayout } from './village/types';
 import type { MoonStateName, NightPhase } from '../../shared/types';
 import type { SoundKey } from '../audio/SoundFx';
 import type { IInteractable } from '../interaction/IInteractable';
@@ -78,10 +80,12 @@ export interface World {
   /** Plays the puja's closing sequence, then calls `done`. Returns a way to cut it short. */
   pujaSequence?(stage: PujaStage, done: () => void): (() => void) | void;
   /**
-   * Leaves offerings on the ground (a failure under the moon). Returns the interactable that picks
-   * them up again; the world draws it until `onEmpty` has been called.
+   * Puts back every offering a failure carried away, for kinds the puja still needs. What is
+   * already before Bappa is left as it is. (The player gathers them again from where they were.)
    */
-  dropOfferings?(at: Vector3, stacks: InventoryStack[], onEmpty: (drop: IInteractable) => void): IInteractable;
+  restockOfferings?(): void;
+  /** What the map needs: where each offering is and how much of it is left, and the village to describe it by. */
+  mapData?: { sources: readonly MapSource[]; layout: VillageLayout };
   /** Where the world's placed sounds come from: the pandal's drums, the temple's drone. */
   soundSpots?: { festival: Vector3 | null; temple: Vector3 | null };
   /** Rendered icons for the bag, when the renderer makes them. */

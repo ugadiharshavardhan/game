@@ -29,7 +29,7 @@ import type { TreeKind } from '../types';
 import { hash, mergeBaked, ribbon, tint } from './common';
 import type { ItemId } from '../../../../shared/items';
 import { ITEM_HEIGHT, type PujaItemVisual } from '../../../items/PujaItem';
-import type { DropVisual, VillageVisuals, VisualsContext } from './types';
+import type { VillageVisuals, VisualsContext } from './types';
 
 /** Greybox colour per puja item. */
 const ITEM_COLOUR: Record<ItemId, string> = {
@@ -236,23 +236,6 @@ export async function buildGreybox(ctx: VisualsContext, opts: GreyboxOptions = {
   return {
     doorHinges,
     itemVisuals,
-    makeDropVisual(at: Vector3): DropVisual {
-      const m = new Mesh(new CylinderGeometry(0.22, 0.26, 0.24, 12).translate(0, 0.12, 0), new MeshStandardMaterial({ color: '#b5462c', roughness: 0.8 }));
-      m.position.copy(at);
-      root.add(m);
-      return {
-        setHighlight: () => {},
-        setRemaining: (left) => {
-          m.visible = left > 0;
-        },
-        update: () => {},
-        dispose: () => {
-          m.removeFromParent();
-          m.geometry.dispose();
-          (m.material as MeshStandardMaterial).dispose();
-        },
-      };
-    },
     update() {},
     dispose() {
       scene.remove(root);

@@ -100,6 +100,7 @@ export function TeamLobby({ onLeave }: { onLeave: () => void }) {
   const team = useObservable(teams.team);
   const error = useObservable(teams.error);
   const status = useObservable(net.status);
+  const networked = useObservable(net.mode) === 'socket';
   const playerId = useObservable(teams.playerId);
   const [copied, setCopied] = useState(false);
 
@@ -140,7 +141,7 @@ export function TeamLobby({ onLeave }: { onLeave: () => void }) {
         <span className="text-[11px] uppercase tracking-widest text-dusk-400">{copied ? 'Copied' : 'Copy'}</span>
       </button>
       <p className="mt-2 text-[11px] text-dusk-400">
-        Share this code with your friends{net.networked ? '' : ' — they can join from another tab on this device'}.
+        Share this code with your friends{networked ? '' : ' — they can join from another tab on this device'}.
       </p>
 
       <ul className="mt-5 space-y-1.5">

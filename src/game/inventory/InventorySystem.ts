@@ -7,7 +7,8 @@
  *   - a pickup takes what fits and leaves the rest where it lies — never over capacity
  *   - nothing is taken beyond what the puja still needs (carried + offered ≤ required)
  *   - at the temple, everything the puja still needs moves from the bag to the altar
- *   - a failure under the moon drops half the bag (rounded down) — never all of it
+ *   - a failure under the moon empties the bag: whatever was carried is gone, and has to be
+ *     collected again. What is already before Bappa stays there — offering is not undone.
  */
 import { INVENTORY_CAPACITY, ITEM_IDS, ITEMS, type InventorySnapshot, type InventoryStack, type ItemId, stillNeeded } from '../../shared/items';
 import { InventoryItem } from './InventoryItem';
@@ -110,23 +111,17 @@ export class InventorySystem {
   }
 
   /**
-   * The moon overwhelmed the player: a few offerings fall where they stand, one at a time from the
-   * fullest stack — so it costs a little of everything, never one whole kind, never more than half
-   * the bag, and never a lone carried item. Returns what fell, to be left in the world.
+   * The moonlight overwhelmed the player: everything in the bag is gone. Returns what was lost.
+   *
+   * Only the bag is emptied. What has already been placed before Bappa is not carried, so it is
+   * not lost — the puja's progress is the one thing a failure cannot take.
    */
-  dropForFailure(limit = 3): InventoryStack[] {
-    let toDrop = Math.min(Math.floor(this.used / 2), Math.max(Math.floor(limit), 0));
-    if (toDrop <= 0) return [];
-    const dropped = new Map<ItemId, number>();
-    while (toDrop > 0) {
-      const fullest = this.stacks.reduce((a, b) => (b.quantity > a.quantity ? b : a));
-      fullest.quantity--;
-      dropped.set(fullest.id, (dropped.get(fullest.id) ?? 0) + 1);
-      if (fullest.quantity === 0) this.stacks.splice(this.stacks.indexOf(fullest), 1);
-      toDrop--;
-    }
+  emptyBag(): InventoryStack[] {
+    const lost = this.stacks.map((s) => ({ id: s.id, quantity: s.quantity }));
+    if (!lost.length) return [];
+    this.stacks.length = 0;
     this.changed();
-    return [...dropped].map(([id, quantity]) => ({ id, quantity }));
+    return lost;
   }
 
   snapshot(): InventorySnapshot {

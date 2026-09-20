@@ -15,6 +15,8 @@ export const PlayerAction = {
   Interact: 'Interact',
   Pickup: 'Pickup',
   Celebrate: 'Celebrate',
+  /** Kneeling before Bappa and bowing to the ground: offering and praying at the temple. */
+  Pranam: 'Pranam',
   EnterHouse: 'EnterHouse',
   ExitHouse: 'ExitHouse',
 } as const;

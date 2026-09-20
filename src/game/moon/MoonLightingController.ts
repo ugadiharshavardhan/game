@@ -11,7 +11,7 @@
  * pushed up as the sky comes down, so the frame is always warm against cool. *No excessive
  * bloom*: brightness comes from exposure and from the lamps themselves, never from a haze pass.
  *
- * Cost: one light, one hemisphere, a sky dome, ~1500 star points and three mist sheets. Nothing
+ * Cost: one light, one hemisphere, a sky dome, ~1500 star points. Nothing
  * here scales with the village, which is what makes it safe on a phone.
  */
 import { Color, MathUtils } from 'three';
@@ -65,7 +65,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: false,
     starOpacity: 0,
     moonOpacity: 0,
-    mistOpacity: 0,
     exposure: 0.74,
   }),
   // The sun touching the roofs: redder, weaker, the first star.
@@ -89,7 +88,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: false,
     starOpacity: 0.12,
     moonOpacity: 0,
-    mistOpacity: 0.04,
     exposure: 0.76,
   }),
   // DUSK — the sun is gone behind the hills, the sky goes deep blue, stars come out.
@@ -113,7 +111,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: false,
     starOpacity: 0.38,
     moonOpacity: 0.06,
-    mistOpacity: 0.1,
     exposure: 0.79,
   }),
   // The last of the sun. The village is lit by its own lamps now.
@@ -137,7 +134,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: false,
     starOpacity: 0.62,
     moonOpacity: 0.28,
-    mistOpacity: 0.16,
     exposure: 0.82,
   }),
   // The same instant, from the other horizon: the moon is now the light. Its direction jumps
@@ -162,10 +158,9 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: true,
     starOpacity: 0.62,
     moonOpacity: 0.3,
-    mistOpacity: 0.16,
     exposure: 0.82,
   }),
-  // MOONRISE — the disc clears the palms, its light spreads across the fields, mist gathers low.
+  // MOONRISE — the disc clears the palms, its light spreads across the fields.
   look(0.62, {
     lightElevation: 16,
     lightAzimuth: MOON_AZIMUTH - 4,
@@ -186,7 +181,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: true,
     starOpacity: 0.86,
     moonOpacity: 0.78,
-    mistOpacity: 0.3,
     exposure: 0.85,
   }),
   // MOONLIGHT — strong but soft, shadows everywhere, and every window and diya glowing warm
@@ -211,7 +205,6 @@ export const LOOKS: Keyframe[] = [
     skyBodyIsMoon: true,
     starOpacity: 1,
     moonOpacity: 1,
-    mistOpacity: 0.42,
     exposure: 0.88,
   }),
 ];
@@ -221,7 +214,7 @@ export const LOOKS: Keyframe[] = [
  * toward this by its own 0..1, so the last minutes lighten from wherever the moon left them.
  *
  * It is the sunset palette read backwards — a low sun from the *other* horizon, the stars going
- * out, ground mist still in the lanes — which is what makes it legible as morning rather than as
+ * out, the first cool light in the lanes — which is what makes it legible as morning rather than as
  * the evening the player started in.
  */
 export const DAWN: SkyLook = look(0, {
@@ -244,7 +237,6 @@ export const DAWN: SkyLook = look(0, {
   skyBodyIsMoon: false,
   starOpacity: 0.04,
   moonOpacity: 0.03,
-  mistOpacity: 0.22,
   exposure: 0.78,
 });
 
@@ -278,7 +270,6 @@ export class MoonLightingController {
     const step = MathUtils.clamp(target - this.night, -MAX_RATE * dt, MAX_RATE * dt);
     const dawnStep = MathUtils.clamp(moon.dawn - this.dawn, -MAX_RATE * dt, MAX_RATE * dt);
     this.apply(this.night + step, this.dawn + dawnStep);
-    this.env.update(dt);
   }
 
   /** Sets the sky outright (start of a run, or a skipped state in dev). */
@@ -312,7 +303,6 @@ function blend(a: SkyLook, b: SkyLook, t: number, out: SkyLook): SkyLook {
   out.skyTint.copy(a.skyTint).lerp(b.skyTint, t);
   out.starOpacity = n(a.starOpacity, b.starOpacity);
   out.moonOpacity = n(a.moonOpacity, b.moonOpacity);
-  out.mistOpacity = n(a.mistOpacity, b.mistOpacity);
   out.exposure = n(a.exposure, b.exposure);
   out.skyBodyIsMoon = t < 0.5 ? a.skyBodyIsMoon : b.skyBodyIsMoon;
   return out;
@@ -346,7 +336,6 @@ function sample(k: number, out: SkyLook): SkyLook {
   out.skyTint.copy(a.skyTint).lerp(b.skyTint, t);
   out.starOpacity = n(a.starOpacity, b.starOpacity);
   out.moonOpacity = n(a.moonOpacity, b.moonOpacity);
-  out.mistOpacity = n(a.mistOpacity, b.mistOpacity);
   out.exposure = n(a.exposure, b.exposure);
   // The body the sky glows around is whichever light is up — never a blend of the two.
   out.skyBodyIsMoon = t < 0.5 ? a.skyBodyIsMoon : b.skyBodyIsMoon;
@@ -374,7 +363,6 @@ function blank(): SkyLook {
     skyBodyIsMoon: false,
     starOpacity: 0,
     moonOpacity: 0,
-    mistOpacity: 0,
     exposure: 0.74,
   };
 }

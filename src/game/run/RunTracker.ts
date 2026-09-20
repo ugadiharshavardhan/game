@@ -40,14 +40,15 @@ export class RunTracker {
     this.stats.itemsCollected += n;
   }
 
-  /** Dropped under the moon (counted lost until picked up again). */
+  /**
+   * Lost to the moon: the bag was emptied. Those offerings never reached Bappa, so they stop
+   * counting as gathered — otherwise being overwhelmed and gathering the same things again would
+   * pay for them twice. The loss itself still costs, on top.
+   */
   dropped(n: number): void {
     this.stats.itemsLost += n;
+    this.stats.itemsCollected = Math.max(this.stats.itemsCollected - n, 0);
     this.stats.overwhelmed++;
-  }
-
-  recovered(n: number): void {
-    this.stats.itemsLost = Math.max(this.stats.itemsLost - n, 0);
   }
 
   shelteredUnderMoon(): void {

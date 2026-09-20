@@ -150,3 +150,14 @@
   .menu-drift, .menu-moonrise, .menu-lamps, .menu-mote { animation: none; }
   .menu-moonrise { opacity: 0.9; }
 }
+
+/* ---- phones -----------------------------------------------------------------------------------
+   A backdrop blur over a WebGL canvas makes the phone re-blur the whole frame behind every panel,
+   every frame. That alone is enough to turn a smooth game into a slideshow, so on a touch device
+   the panels keep their translucent tint and lose the blur. */
+@media (pointer: coarse) {
+  [class*='backdrop-blur'] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}

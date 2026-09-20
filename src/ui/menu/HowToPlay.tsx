@@ -6,7 +6,8 @@ export function HowToPlay({ onBack, onTutorial }: { onBack: () => void; onTutori
     ['One night', 'You arrive at half past six in the evening. At five in the morning the night is over, finished or not.'],
     ['Gather', 'Seven kinds of offering are scattered around the village. Your bag holds fifteen, so it takes more than one trip.'],
     ['Watch the sky', 'While the clouds cover the moon, work. The lamps go up, the birds go quiet, a bell rings, the villagers go home — that means the clouds are thinning.'],
-    ['Step inside', 'Any door with a lamp beside it opens. Under a clear moon, indoors is the only place it cannot reach you; outside it builds up until you drop what you are carrying.'],
+    ['Step inside', 'Any door with a lamp beside it opens. Under a clear moon, indoors is the only place it cannot reach you.'],
+    ['Strength', 'Moonlight on your skin takes your strength, and only a roof gives it back — standing in the dark outside will not mend you. Run out and your bag is emptied — you gather again — and a household takes you in. What you have already offered stays with Bappa.'],
     ['Offer', 'Carry everything to the temple and give it to Bappa. After the sky begins to lighten no moon rises again — that last hour is yours, and it is the last one you get.'],
   ];
   return (

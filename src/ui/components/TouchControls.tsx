@@ -4,6 +4,7 @@ import { useGameEvent } from '../hooks/useGameEvent';
 
 interface TouchControlsProps {
   onOpenBag: () => void;
+  onOpenMap: () => void;
   onPause: () => void;
   /** The verb the action button would do right now, if anything. */
   action: { verb: string; enabled: boolean } | null;
@@ -19,7 +20,7 @@ interface TouchControlsProps {
  * The joystick's position comes from the engine every frame and goes straight to the element's
  * transform, so dragging never re-renders React.
  */
-export function TouchControls({ onOpenBag, onPause, action, sneaking }: TouchControlsProps) {
+export function TouchControls({ onOpenBag, onOpenMap, onPause, action, sneaking }: TouchControlsProps) {
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
@@ -74,6 +75,14 @@ export function TouchControls({ onOpenBag, onPause, action, sneaking }: TouchCon
       <div className="safe-top pointer-events-auto absolute right-4 top-4 flex gap-2">
         <button
           type="button"
+          onClick={onOpenMap}
+          aria-label="Open the map"
+          className="grid h-11 w-11 place-items-center rounded-full border border-lamp-400/35 bg-night-950/60 text-lamp-400 backdrop-blur-md active:scale-95"
+        >
+          <MapGlyph />
+        </button>
+        <button
+          type="button"
           onClick={onOpenBag}
           aria-label="Open the bag"
           className="grid h-11 w-11 place-items-center rounded-full border border-lamp-400/35 bg-night-950/60 text-lamp-400 backdrop-blur-md active:scale-95"
@@ -117,6 +126,15 @@ export function TouchControls({ onOpenBag, onPause, action, sneaking }: TouchCon
         </button>
       </div>
     </div>
+  );
+}
+
+function MapGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
+      <path d="M3.5 6.5 9 4l6 2.5L20.5 4v13.5L15 20l-6-2.5L3.5 20z" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M9 4v13.5M15 6.5V20" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
   );
 }
 

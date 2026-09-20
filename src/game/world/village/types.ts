@@ -8,6 +8,8 @@ import type { ItemId } from '../../../shared/items';
  * (radians about y): rot 0 → door faces +z (south), π → north, π/2 → east, −π/2 → west.
  */
 
+import type { Activity } from '../../player/activityClips';
+
 export interface P2 {
   x: number;
   z: number;
@@ -179,14 +181,21 @@ export interface LandmarkDef {
   rot: number;
 }
 
-/** What a villager is doing: a pose held while they prepare for the festival. */
+/** How a villager holds themselves: standing, kneeling, seated. It sizes their collider and where they stand. */
 export type VillagerPose = 'stand' | 'talk' | 'arms-up' | 'hold-up' | 'kneel' | 'sit-edge' | 'sit-stool' | 'light-lamp';
+
+/** Who a villager is: which of the village's three people is drawn. */
+export type FolkKind = 'man' | 'woman' | 'pujari';
 
 export interface VillagerDef {
   id: string;
   /** What they are doing, for the pose and for anyone reading the layout. */
   task: string;
   pose: VillagerPose;
+  /** Which person is drawn: a man (the default), a woman in a saree, or the priest. */
+  kind?: FolkKind;
+  /** The work they do, on a slow loop. Defaults to the one their pose suggests. */
+  activity?: Activity;
   x: number;
   z: number;
   /** Height of the surface they stand or sit on. */

@@ -71,6 +71,20 @@ export interface ExposureInput {
 
 export type ExposureLevel = 'calm' | 'exposed' | 'warn' | 'danger';
 
+/**
+ * How hard the moon is pressing on the player this second, in exposure points per second, or 0
+ * when it is not pressing at all. One place for the four things that decide it — the sky, the
+ * cover overhead, how the player is moving and how far the nearest door is — so that health
+ * (health/HealthSystem.ts) is costed by exactly the same judgement the exposure meter uses,
+ * rather than by a second copy of it that can drift.
+ */
+export function moonPressure(c: ExposureConfig, e: ExposureInput): number {
+  if (!(e.moonRate > 0) || e.sheltered) return 0;
+  const cover = e.covered ? c.coveredMultiplier : e.openGround ? c.openMultiplier : c.laneMultiplier;
+  const far = Math.min(1 + Math.max(e.shelterDistance - c.farFrom, 0) * c.perMetre, c.maxDistanceMultiplier);
+  return c.baseRate * e.moonRate * cover * c.gait[e.gait] * far;
+}
+
 export class ExposureSystem {
   value = 0;
   /** Climbing right now. */
@@ -103,13 +117,16 @@ export class ExposureSystem {
     this.rising = e.moonRate > 0 && !e.sheltered;
     if (this.rising) {
       this.exposedSeconds += dt;
-      const cover = e.covered ? c.coveredMultiplier : e.openGround ? c.openMultiplier : c.laneMultiplier;
-      const far = Math.min(1 + Math.max(e.shelterDistance - c.farFrom, 0) * c.perMetre, c.maxDistanceMultiplier);
-      this.value += c.baseRate * e.moonRate * cover * c.gait[e.gait] * far * dt;
+      const was = this.value;
+      this.value += moonPressure(c, e) * dt;
       if (this.value >= c.max) {
         this.value = c.max;
-        this.failures++;
-        return true;
+        // Only on the frame it fills: pinned at the top it must not keep announcing itself.
+        if (was < c.max) {
+          this.failures++;
+          return true;
+        }
+        return false;
       }
     } else {
       this.value -= (e.sheltered ? c.recoverIndoors : c.recoverOutdoors) * dt;

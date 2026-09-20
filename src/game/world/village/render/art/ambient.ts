@@ -87,7 +87,7 @@ export function build(a: ArtContext): boolean {
     const strength = 0.35 + 0.25 * Math.sin(time * 0.07);
     wind.set(Math.cos(time * 0.05) * strength, 0, Math.sin(time * 0.043) * strength);
 
-    const night = a.shared.moonlight;
+    const night = a.shared.night;
     // Dust is a thing of the last light; fireflies come out as it goes.
     const dustLevel = Math.max(0, 1 - night * 1.8);
     const flyLevel = Math.min(Math.max((night - 0.18) * 1.8, 0), 1);

@@ -16,6 +16,7 @@ import type { MoonStateName } from '../../shared/types';
 import type { ItemId } from '../../shared/items';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import type { Gameplay } from '../Gameplay';
+import type { PlayerAction } from '../player/PlayerAnimation';
 import type { Player } from '../player/Player';
 import type { World } from '../world/World';
 import type { Input } from './Input';
@@ -154,6 +155,10 @@ export async function installDevtools(h: DevHandle): Promise<void> {
     },
     interact() {
       h.input.interactPressed = true;
+    },
+    /** Plays a one-shot on the player (Pranam, Celebrate, Interact…) without any gameplay attached. */
+    play(action: string) {
+      h.player.playAction(action as PlayerAction, () => {}, () => {});
     },
     /** Toggles the sneak/crouch gait, as the C key or the SNEAK button would. */
     sneak() {

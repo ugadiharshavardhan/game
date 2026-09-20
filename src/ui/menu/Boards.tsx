@@ -7,8 +7,9 @@ import { services, useObservable } from '../services';
  * single best valid run; the team one is its members' bests added up.
  */
 export function Boards({ onBack, initial = 'individual' }: { onBack: () => void; initial?: 'individual' | 'teams' }) {
-  const { boards } = services();
+  const { boards, profiles } = services();
   const data = useObservable(boards.boards);
+  const me = useObservable(profiles.profile)?.playerId;
   const loading = useObservable(boards.loading);
   const [tab, setTab] = useState(initial);
 
@@ -41,13 +42,26 @@ export function Boards({ onBack, initial = 'individual' }: { onBack: () => void;
       <div className="mt-4 min-h-[13rem]">
         {tab === 'individual' ? (
           data.individual.length === 0 ? (
-            <Empty loading={loading} what="No runs yet. Be the first to finish the puja." />
+            <Empty loading={loading} what="No runs yet. Play a night — finished or not, it will show up here." />
           ) : (
             <ol className="space-y-1">
               {data.individual.map((row) => (
-                <li key={row.playerId} className="flex items-baseline gap-3 rounded-lg bg-night-900/60 px-3 py-2 text-sm">
+                <li
+                  key={row.playerId}
+                  className={`flex items-baseline gap-3 rounded-lg px-3 py-2 text-sm ${row.playerId === me ? 'bg-lamp-400/15 ring-1 ring-lamp-400/40' : 'bg-night-900/60'}`}
+                >
                   <span className="w-6 shrink-0 tabular-nums text-dusk-400">{row.rank}</span>
-                  <span className="flex-1 truncate text-lamp-200">{row.displayName}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-lamp-200">
+                      {row.displayName}
+                      {row.playerId === me && <span className="ml-1.5 text-[10px] uppercase tracking-[0.2em] text-lamp-400">you</span>}
+                    </span>
+                    {row.complete === false && (
+                      <span className="block text-[10px] uppercase tracking-[0.18em] text-dusk-400">
+                        Unfinished{typeof row.items === 'number' ? ` · ${row.items} offering${row.items === 1 ? '' : 's'} gathered` : ''}
+                      </span>
+                    )}
+                  </span>
                   <span className="hidden w-28 truncate text-xs text-dusk-400 sm:block">{row.campus || '—'}</span>
                   <span className="w-16 text-right font-display tabular-nums text-lamp-400">{row.score}</span>
                   <span className="w-12 text-right text-xs tabular-nums text-dusk-400">{formatDuration(row.durationMs)}</span>

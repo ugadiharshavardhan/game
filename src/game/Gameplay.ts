@@ -8,15 +8,17 @@
  */
 import { type Camera, Vector3 } from 'three';
 import { EventBus } from '../shared/EventBus';
-import { describeStacks, ITEM_IDS, ITEMS, type InventoryStack } from '../shared/items';
+import { describeStacks, ITEM_IDS, ITEMS } from '../shared/items';
 import type { MoonStateName, NightPhase } from '../shared/types';
 import type { Ambience } from './audio/Ambience';
 import type { SoundFx } from './audio/SoundFx';
 import type { Physics } from './core/Physics';
-import type { IInteractable, InteractionActor } from './interaction/IInteractable';
+import type { InteractionActor } from './interaction/IInteractable';
 import { InteractionSystem } from './interaction/InteractionSystem';
 import { InventorySystem } from './inventory/InventorySystem';
-import { DEFAULT_EXPOSURE_CONFIG, ExposureSystem, type Gait } from './moon/ExposureSystem';
+import { HealthSystem } from './health/HealthSystem';
+import { MapSystem } from './map/MapSystem';
+import { DEFAULT_EXPOSURE_CONFIG, ExposureSystem, type ExposureInput, type Gait, moonPressure } from './moon/ExposureSystem';
 import { MoonAudioController } from './moon/MoonAudioController';
 import { MoonManager } from './moon/MoonManager';
 import { DEFAULT_MOON_CONFIG, type MoonCycleConfig } from './moon/MoonState';
@@ -53,15 +55,19 @@ export class Gameplay {
   readonly night: NightClock;
   readonly moon: MoonManager;
   readonly exposure = new ExposureSystem();
+  readonly health = new HealthSystem();
   readonly interaction: InteractionSystem;
   readonly run = new RunTracker();
   /** The bag is open: movement and the action button wait. */
   inventoryOpen = false;
+  /** The map is open: movement and the action button wait, as with the bag. */
+  mapOpen = false;
   /** The puja's closing sequence is playing: everything else stands back. */
   cinematic = false;
 
   private readonly audio: MoonAudioController | null;
   private world: World | null = null;
+  private map: MapSystem | null = null;
   private player: GameplayActor | null = null;
   private camera: Camera | null = null;
   private uiTimer = 0;
@@ -101,6 +107,11 @@ export class Gameplay {
         this.inventoryOpen = open;
         this.sounds?.play(open ? 'bag-open' : 'bag-close');
       }),
+      EventBus.on('game:map-open', ({ open }) => {
+        this.mapOpen = open;
+      }),
+      // A villager's word is a hint on the map.
+      EventBus.on('ui:speech', ({ speaker }) => this.map?.hear(speaker)),
       EventBus.on('ui:pickup', ({ quantity }) => this.run.collected(quantity)),
       EventBus.on('game:skip-cinematic', () => this.skipCinematic?.()),
     );
@@ -125,12 +136,17 @@ export class Gameplay {
     this.camera = camera;
     this.rig = rig;
     for (const i of world.interactables) this.interaction.register(i);
+    if (world.mapData) {
+      this.map = new MapSystem(world.mapData.sources, world.mapData.layout, (item) => this.inventory.snapshot().offered[item] < ITEMS[item].required);
+      EventBus.emit('ui:map-spots', { spots: [] });
+    }
     this.audio?.place(world.soundSpots?.festival ?? null, world.soundSpots?.temple ?? null);
     world.shelter?.attach(player, rig, () => this.moon.dangerous || this.moon.state === 'warning', (k) => this.sounds?.play(k));
     EventBus.emit('ui:inventory', this.inventory.snapshot());
     this.emitMoon();
     this.emitNight();
     this.emitExposure();
+    this.emitHealth();
   }
 
   update(dt: number, interactPressed: boolean): void {
@@ -151,7 +167,7 @@ export class Gameplay {
       this.emitMoon();
     }
     this.interaction.update(dt, player, this.camera);
-    if (interactPressed && !this.inventoryOpen && !world.shelter?.busy) this.interaction.tryBegin(player);
+    if (interactPressed && !this.inventoryOpen && !this.mapOpen && !world.shelter?.busy) this.interaction.tryBegin(player);
     world.shelter?.update(dt);
 
     // Ground covered, for the score's efficiency and for the walk's own sake.
@@ -161,20 +177,31 @@ export class Gameplay {
     this.lastPos.z = f.z;
     this.lastPos.set = true;
 
+    // What the player can see of the offerings, for the map.
+    if (this.map) {
+      this.map.see(f.x, f.z);
+      const spots = this.map.changed();
+      if (spots) EventBus.emit('ui:map-spots', { spots });
+    }
+
     const safe = world.shelter?.isSafe ?? false;
     if (safe && !this.sheltered && this.moon.dangerous) this.run.shelteredUnderMoon();
     this.sheltered = safe;
 
-    const overwhelmed = this.exposure.update(dt, {
+    const moonOnYou: ExposureInput = {
       moonRate: this.moon.exposureRate,
       sheltered: safe,
       openGround: world.isOpenGround?.() ?? false,
       covered: world.isCovered?.() ?? false,
       gait: this.gait(player),
       shelterDistance: world.shelterDistance?.(f) ?? 0,
-    });
+    };
+    this.exposure.update(dt, moonOnYou);
     this.run.exposed(this.exposure.exposedSeconds);
-    if (overwhelmed) this.overwhelmed();
+    // Exposure is the pressure and drives what the frame looks like; health is what the pressure
+    // costs, and it is health running out that ends the moment — one failure condition, not two.
+    const collapsed = this.health.update(dt, { pressure: moonPressure(DEFAULT_EXPOSURE_CONFIG, moonOnYou), sheltered: safe });
+    if (collapsed) this.overwhelmed();
 
     this.hear(dt, world);
 
@@ -184,6 +211,7 @@ export class Gameplay {
       this.emitMoon();
       this.emitNight();
       this.emitExposure();
+      this.emitHealth();
     }
 
     // Five o'clock. Whatever is in the bag stays in the bag.
@@ -242,6 +270,8 @@ export class Gameplay {
     }
     this.audio.update(dt, {
       moonlight: this.moon.moonlight,
+      // The village sounds like the hour the sky is, not only like whether the moon is out.
+      night: Math.max(this.night.nightBase, this.moon.moonlight),
       indoors: world.shelter?.isSafe ?? false,
       atTemple: this.atTemple,
     });
@@ -254,32 +284,30 @@ export class Gameplay {
   }
 
   /**
-   * The moonlight overwhelmed the player. Not a failure: a few offerings slip from the bag where
-   * they stood, and the nearest household pulls them inside. The run goes on.
+   * The moonlight overwhelmed the player. Their strength is gone, and so is what they carried:
+   * the bag is emptied, and the offerings it held are put back where they were found, to be
+   * gathered again. What is already before Bappa stays there. The nearest household pulls them
+   * inside, and the run goes on.
    */
   private overwhelmed(): void {
     const player = this.player;
     const world = this.world;
     if (!player || !world) return;
-    const stacks = this.inventory.dropForFailure(3);
+    const stacks = this.inventory.emptyBag();
     const lost = stacks.reduce((n, s) => n + s.quantity, 0);
     this.run.dropped(lost);
     this.exposure.reset();
+    this.health.revive();
     this.sounds?.play('drop');
-    if (stacks.length && world.dropOfferings) this.leaveOnTheGround(world, player.feet.clone(), stacks);
+    world.restockOfferings?.();
     const taken = world.shelter?.takeIndoors?.(player.feet);
+    const said = lost ? `; you lost ${describeStacks(stacks)} — gather ${lost === 1 ? 'it' : 'them'} again` : '';
     EventBus.emit('ui:toast', {
-      text: taken
-        ? `The moonlight overwhelms you — ${taken} takes you in${lost ? `; you dropped ${describeStacks(stacks)}` : ''}`
-        : `The moonlight overwhelms you${lost ? ` — you dropped ${describeStacks(stacks)}` : ''}`,
+      text: taken ? `The moonlight overwhelms you — ${taken} takes you in${said}` : `The moonlight overwhelms you${said}`,
       tone: 'warn',
     });
     this.emitExposure();
-  }
-
-  private leaveOnTheGround(world: World, at: Vector3, stacks: InventoryStack[]): void {
-    const drop: IInteractable = world.dropOfferings!(at, stacks, (d) => this.interaction.unregister(d));
-    this.interaction.register(drop);
+    this.emitHealth();
   }
 
   /**
@@ -318,7 +346,7 @@ export class Gameplay {
     const cut = world.pujaSequence(
       {
         camera: this.rig,
-        celebrate: () => player.playAction(PlayerAction.Celebrate, () => {}, () => {}),
+        celebrate: () => player.playAction(PlayerAction.Pranam, () => {}, () => {}),
         sound: (key, volume) => this.sounds?.play(key, volume),
       },
       finish,
@@ -345,6 +373,11 @@ export class Gameplay {
   private emitNight(): void {
     const n = this.night;
     EventBus.emit('ui:night', { label: n.label, t: n.t, phase: n.phase, minutesLeft: n.minutesLeft });
+  }
+
+  private emitHealth(): void {
+    const h = this.health;
+    EventBus.emit('ui:health', { value: Math.round(h.value), level: h.level, draining: h.draining });
   }
 
   private emitExposure(): void {

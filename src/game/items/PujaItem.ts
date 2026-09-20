@@ -142,6 +142,16 @@ export class PujaItem implements IInteractable {
     EventBus.emit('ui:pickup', { id: this.itemId, quantity: taken, leftBehind: this.currentQuantity });
   }
 
+  /**
+   * Puts back what was taken. A failure empties the bag, and what it carried has to be gathered
+   * again — from here, where it was found.
+   */
+  restock(): void {
+    if (this.currentQuantity === this.initialQuantity) return;
+    this.currentQuantity = this.initialQuantity;
+    this.visual?.setRemaining(this.currentQuantity, this.initialQuantity);
+  }
+
   setHighlight(approach: number, focused: boolean): void {
     this.visual?.setHighlight(approach, focused);
   }

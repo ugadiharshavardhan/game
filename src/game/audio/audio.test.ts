@@ -43,6 +43,31 @@ describe('the one-shot sounds', () => {
   });
 });
 
+describe('the one-shot sounds, as a set', () => {
+  const rmsOf = (key: (typeof SOUND_KEYS)[number]) => measure(synthesise(key, 22050)).rms;
+
+  it('do not differ wildly in loudness before their own volumes are applied', () => {
+    // Peak-normalised noise and peak-normalised bells are not equally loud; the VOLUME table is
+    // what evens them out. This guards the recipes from drifting so far apart that no table could.
+    const levels = SOUND_KEYS.map((k) => rmsOf(k));
+    expect(Math.max(...levels) / Math.min(...levels)).toBeLessThan(14);
+  });
+
+  it('a jump is quieter than a landing, and neither is a bell', () => {
+    expect(rmsOf('jump')).toBeGreaterThan(0.01);
+    expect(rmsOf('land')).toBeGreaterThan(0.01);
+  });
+
+  it('have no long stretch of silence at the end that would waste a source', () => {
+    for (const k of SOUND_KEYS) {
+      const x = synthesise(k, 22050);
+      const tail = x.slice(Math.floor(x.length * 0.9));
+      // The last tenth of a sound may be quiet, but a recipe that is all silence there is a bug.
+      expect(tail.length, k).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('MoonAudioController', () => {
   const rig = () => {
     const levels: Record<'evening' | 'night' | 'moon' | 'festival' | 'temple', number> = { evening: 0, night: 0, moon: 0, festival: 0, temple: 0 };
@@ -60,8 +85,8 @@ describe('MoonAudioController', () => {
     };
     const audio = new MoonAudioController(ambience as never, null);
     return {
-      at(moonlight: number, over: { indoors?: boolean; atTemple?: number } = {}) {
-        audio.update(0.1, { moonlight, indoors: false, atTemple: 0, ...over });
+      at(moonlight: number, over: { indoors?: boolean; atTemple?: number; night?: number } = {}) {
+        audio.update(0.1, { moonlight, night: moonlight, indoors: false, atTemple: 0, ...over });
         return { ...levels, indoors };
       },
     };
@@ -95,6 +120,30 @@ describe('MoonAudioController', () => {
     const temple = r.at(0.3, { atTemple: 1 });
     expect(temple.temple).toBeGreaterThan(lane.temple);
     expect(temple.night).toBeLessThan(lane.night);
+  });
+
+  it('a cloudy small hour sounds like night, not like the evening it started as', () => {
+    const r = rig();
+    // 1 a.m., clouds over the moon: the sky is dark, but no moonlight is falling.
+    const dark = r.at(0, { night: 0.36 });
+    expect(dark.evening, 'the birds are gone').toBeLessThan(0.2);
+    expect(dark.night, 'the crickets are out').toBeGreaterThan(0.7);
+    expect(dark.festival, 'the drums have been packed away').toBeLessThan(0.4);
+    expect(dark.moon, 'and there is no moon for the drone to be the sound of').toBe(0);
+  });
+
+  it('the moon’s drone follows the moon, not the night', () => {
+    const r = rig();
+    expect(r.at(0, { night: 0.36 }).moon).toBe(0);
+    expect(r.at(1, { night: 0.36 }).moon).toBe(1);
+  });
+
+  it('the birds come back with the dawn', () => {
+    const r = rig();
+    const smallHours = r.at(0, { night: 0.36 });
+    const dawn = r.at(0, { night: 0.12 });
+    expect(dawn.evening).toBeGreaterThan(smallHours.evening * 3);
+    expect(dawn.night).toBeLessThan(smallHours.night);
   });
 
   it('indoors is passed straight through to the wall between you and it', () => {

@@ -6,7 +6,6 @@
 import { type Scene, Vector3, type WebGLRenderer } from 'three';
 import { CAMERA_QUERY } from '../../core/Physics';
 import { EventBus } from '../../../shared/EventBus';
-import type { InventoryStack } from '../../../shared/items';
 import type { Physics } from '../../core/Physics';
 import type { IInteractable } from '../../interaction/IInteractable';
 import { PujaItem } from '../../items/PujaItem';
@@ -15,13 +14,13 @@ import { ShelterManager } from '../../shelter/ShelterManager';
 import { HouseInterior } from '../../shelter/HouseInterior';
 import { MoonLightingController } from '../../moon/MoonLightingController';
 import { PROFILES, type QualityProfile } from '../../core/quality';
-import { buildEnvironment, EVENING } from '../environment';
+import { buildEnvironment } from '../environment';
 import type { World, WorldFrame, WorldServices } from '../World';
 import { buildColliders } from './colliders';
 import { PujaSequence } from './PujaSequence';
-import { DroppedOfferings, LockedDoor, TempleAltar, VillagerTalk } from './interactables';
+import { LockedDoor, TempleAltar, VillagerTalk } from './interactables';
 import { VILLAGE } from './layout';
-import type { DropVisual, VillageVisuals, VisualsContext } from './render/types';
+import type { VillageVisuals, VisualsContext } from './render/types';
 import { buildLevel } from './solids';
 import { TriggerSystem } from './TriggerSystem';
 
@@ -36,7 +35,7 @@ export async function buildVillage(
   quality: QualityProfile = PROFILES.high,
 ): Promise<World & { triggers: TriggerSystem; items: PujaItem[] }> {
   const level = buildLevel(VILLAGE);
-  const env = buildEnvironment(scene, renderer, { ...EVENING, mist: quality.mist });
+  const env = buildEnvironment(scene, renderer);
   const colliders = buildColliders(VILLAGE, level, physics);
   const ctx: VisualsContext = {
     scene,
@@ -92,7 +91,6 @@ export async function buildVillage(
     .map((v) => new VillagerTalk({ ...v, name: v.name ?? '', lines: v.lines ?? [] }));
 
   const triggers = new TriggerSystem(physics, colliders);
-  const drops = new Map<IInteractable, DropVisual>();
   let time = 0;
   const feet = new Vector3();
   const up = new Vector3(0, 1, 0);
@@ -105,6 +103,7 @@ export async function buildVillage(
     interactables: [...items, ...doors, altar, ...villagers],
     shelter,
     items,
+    mapData: { sources: items.map((i) => ({ id: i.spot.id, item: i.itemId, x: i.spot.x, z: i.spot.z, left: () => i.currentQuantity })), layout: VILLAGE },
     spawn: new Vector3(level.spawn.x, level.spawn.y, level.spawn.z),
     spawnYaw: level.spawn.yaw,
     sun: env.sun,
@@ -128,16 +127,11 @@ export async function buildVillage(
       visuals.puja?.start(offerPoint);
       return () => puja?.finish();
     },
-    dropOfferings(at: Vector3, stacks: InventoryStack[], onEmpty: (d: IInteractable) => void) {
-      const visual = visuals.makeDropVisual(at);
-      const drop = new DroppedOfferings(at, stacks, services.inventory, (d) => {
-        visual.dispose();
-        drops.delete(d);
-        onEmpty(d);
-      });
-      drop.visual = visual;
-      drops.set(drop, visual);
-      return drop;
+    restockOfferings() {
+      // A failure took the bag. What it carried is gathered again from where it was found — but
+      // only the kinds Bappa still wants: what is already before him is done.
+      const offered = services.inventory.snapshot().offered;
+      for (const item of items) if (offered[item.itemId] < item.requiredQuantity) item.restock();
     },
     update(dt: number, at: Vector3, frame: WorldFrame) {
       time += dt;
@@ -151,7 +145,10 @@ export async function buildVillage(
         camera: frame.camera,
         time,
         templeGlow: Math.max(altar.lampBoost, visuals.puja?.glow ?? 0),
-        moonlight: lighting.night,
+        // Two different questions: how dark the sky is (the art follows the lighting actually
+        // reached), and how much moonlight is falling (the moon's own, which is 0 under cloud).
+        night: lighting.night,
+        moonlight: frame.moon.moonlight,
         goingHome: frame.moon.goingHome,
         dangerous: frame.moon.dangerous,
         player: at,
@@ -159,7 +156,6 @@ export async function buildVillage(
       });
     },
     dispose() {
-      for (const v of drops.values()) v.dispose();
       visuals.dispose();
       env.dispose();
     },

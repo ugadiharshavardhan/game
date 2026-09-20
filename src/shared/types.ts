@@ -47,6 +47,9 @@ export type NightPhase = 'evening' | 'night' | 'dawn';
 /** How much of the moon has fallen on the player (game/moon/ExposureSystem.ts). */
 export type ExposureLevel = 'calm' | 'exposed' | 'warn' | 'danger';
 
+/** What the moonlight has cost the player so far (game/health/HealthSystem.ts). */
+export type HealthLevel = 'well' | 'grazed' | 'hurt' | 'critical';
+
 export interface RunStats {
   /** Offerings picked up, counting everything taken. */
   itemsCollected: number;

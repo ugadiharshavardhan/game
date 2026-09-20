@@ -97,39 +97,34 @@ describe('InventorySystem', () => {
   });
 
   describe('a failure under the moon', () => {
-    it('drops a few offerings, never half a full bag', () => {
+    it('empties the bag, and says what it held', () => {
       const inv = new InventorySystem();
       inv.add('flowers', 3);
       inv.add('durva', 2);
       inv.add('coconut', 1);
       inv.add('bananas', 4);
-      const dropped = inv.dropForFailure();
-      expect(dropped.reduce((n, s) => n + s.quantity, 0)).toBe(3);
-      expect(inv.used).toBe(7);
+      const lost = new Map(inv.emptyBag().map((s) => [s.id, s.quantity]));
+      expect(inv.used).toBe(0);
+      expect(inv.items).toHaveLength(0);
+      expect(lost.get('flowers')).toBe(3);
+      expect(lost.get('durva')).toBe(2);
+      expect(lost.get('coconut')).toBe(1);
+      expect(lost.get('bananas')).toBe(4);
     });
 
-    it('never takes more than half, however small the bag', () => {
-      const inv = new InventorySystem();
-      inv.add('flowers', 4);
-      expect(inv.dropForFailure(3).reduce((n, s) => n + s.quantity, 0)).toBe(2);
-      expect(inv.used).toBe(2);
-    });
-
-    it('takes from the fullest stacks first, a little of everything', () => {
-      const inv = new InventorySystem();
-      inv.add('diya', 5);
-      inv.add('modak', 5);
-      const dropped = new Map(inv.dropForFailure(4).map((s) => [s.id, s.quantity]));
-      expect(dropped.get('diya')).toBe(2);
-      expect(dropped.get('modak')).toBe(2);
-      expect(inv.count('diya') + inv.count('modak')).toBe(6);
-    });
-
-    it('a single carried item is never lost', () => {
+    it('takes even a single carried item', () => {
       const inv = new InventorySystem();
       inv.add('coconut', 1);
-      expect(inv.dropForFailure()).toEqual([]);
-      expect(inv.count('coconut')).toBe(1);
+      expect(inv.emptyBag()).toEqual([{ id: 'coconut', quantity: 1 }]);
+      expect(inv.count('coconut')).toBe(0);
+    });
+
+    it('is a quiet nothing for an empty bag', () => {
+      const inv = new InventorySystem();
+      const seen: number[] = [];
+      inv.onChange((s) => seen.push(s.used));
+      expect(inv.emptyBag()).toEqual([]);
+      expect(seen, 'nothing changed, so nobody is told').toEqual([]);
     });
 
     it('never touches what is already offered at the temple', () => {
@@ -137,8 +132,20 @@ describe('InventorySystem', () => {
       inv.add('modak', 5);
       inv.offerAtTemple();
       inv.add('diya', 4);
-      inv.dropForFailure();
+      inv.emptyBag();
       expect(inv.offered('modak')).toBe(5);
+      expect(inv.count('diya')).toBe(0);
+    });
+
+    it('lets what was lost be carried again, up to what the puja still needs', () => {
+      const inv = new InventorySystem();
+      inv.add('flowers', 5);
+      inv.offerAtTemple();
+      inv.add('flowers', 2);
+      expect(inv.count('flowers'), 'Bappa already has every flower').toBe(0);
+      inv.add('rice', 2);
+      inv.emptyBag();
+      expect(inv.add('rice', 3), 'the rice can be gathered again — but only what the puja asks for').toBe(2);
     });
   });
 

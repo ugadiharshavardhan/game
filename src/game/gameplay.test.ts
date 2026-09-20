@@ -1,7 +1,7 @@
 /**
- * The run's rules working together: the moon drains an exposed player, a failure drops half the
- * bag where they stand (never all of it), the fallen offerings can be picked up again, and the
- * temple takes what the puja needs.
+ * The run's rules working together: the moon drains an exposed player, a failure empties the bag
+ * (what is already before Bappa stays there; the rest is gathered again), and the temple takes
+ * what the puja needs.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { DirectionalLight, Vector3 } from 'three';
@@ -11,9 +11,10 @@ import { ITEM_IDS, ITEMS } from '../shared/items';
 import { Physics } from './core/Physics';
 import { Gameplay, type GameplayActor } from './Gameplay';
 import { DEFAULT_NIGHT_CONFIG, type NightConfig } from './night/NightClock';
-import type { IInteractable } from './interaction/IInteractable';
 import type { PlayerAction } from './player/PlayerAnimation';
-import { DroppedOfferings, TempleAltar } from './world/village/interactables';
+import { PujaItem } from './items/PujaItem';
+import { TempleAltar } from './world/village/interactables';
+import { VILLAGE } from './world/village/layout';
 import type { World } from './world/World';
 
 beforeAll(async () => {
@@ -29,9 +30,10 @@ function setup(open = true, night: NightConfig = DEFAULT_NIGHT_CONFIG) {
   const gameplay = new Gameplay(physics, null, null, 1, undefined, night);
   const services = gameplay.services;
   const altar = new TempleAltar(new Vector3(0, 0, 8), gameplay.inventory, services.onPray, services.onPujaComplete);
-  const drops: IInteractable[] = [];
+  // The village's own offering spots, on the run's own bag — so what a failure restocks is real.
+  const spots = VILLAGE.offerings.map((o) => new PujaItem(o, gameplay.inventory, null));
   const world: World = {
-    interactables: [altar],
+    interactables: [altar, ...spots],
     shelter: null,
     spawn: new Vector3(),
     spawnYaw: 0,
@@ -40,10 +42,9 @@ function setup(open = true, night: NightConfig = DEFAULT_NIGHT_CONFIG) {
     isOpenGround: () => open,
     isCovered: () => false,
     shelterDistance: () => 12,
-    dropOfferings(at, stacks, onEmpty) {
-      const d = new DroppedOfferings(at, stacks, gameplay.inventory, (x) => onEmpty(x));
-      drops.push(d);
-      return d;
+    restockOfferings() {
+      const offered = gameplay.inventory.snapshot().offered;
+      for (const spot of spots) if (offered[spot.itemId] < spot.requiredQuantity) spot.restock();
     },
     dispose() {},
   };
@@ -70,12 +71,23 @@ function setup(open = true, night: NightConfig = DEFAULT_NIGHT_CONFIG) {
     physics.step(DT);
     gameplay.update(DT, interact);
   };
-  return { gameplay, player, drops, frame, altar, actions };
+  return { gameplay, player, spots, frame, altar, actions };
 }
 
 describe('Gameplay', () => {
-  it('a failure under the moon drops half the bag where you stand — and you can pick it up again', () => {
-    const { gameplay, player, drops, frame } = setup();
+  /** Runs the moon over an exposed player until their strength is spent. */
+  const collapse = (gameplay: Gameplay, frame: () => void) => {
+    gameplay.moon.skipTo('active');
+    let t = 0;
+    while (gameplay.health.collapses === 0 && t < 90) {
+      frame();
+      t += DT;
+    }
+    expect(gameplay.health.collapses, 'overwhelmed on open ground under the moon').toBe(1);
+  };
+
+  it('when strength runs out the bag is empty, and nothing is left on the ground', () => {
+    const { gameplay, frame } = setup();
     const inv = gameplay.inventory;
     inv.add('flowers', 3);
     inv.add('durva', 2);
@@ -84,33 +96,80 @@ describe('Gameplay', () => {
     const toasts: string[] = [];
     EventBus.on('ui:toast', ({ text }) => toasts.push(text));
 
-    gameplay.moon.skipTo('active');
-    let t = 0;
-    while (!drops.length && t < 30) {
-      frame();
-      t += DT;
-    }
-    expect(drops, 'overwhelmed on open ground within the moonlight').toHaveLength(1);
-    // A few offerings, not the bag: three of the ten.
-    expect(inv.used).toBe(7);
-    expect(gameplay.exposure.value).toBe(0);
-    expect(toasts.some((x) => x.includes('overwhelms you'))).toBe(true);
+    collapse(gameplay, frame);
 
-    // Clouds cover the moon; walk back to the bundle and collect it.
-    gameplay.moon.skipTo('safe');
-    player.feet.set(0, 0, -0.9); // facing +z toward where it fell
-    frame();
-    frame(true);
-    expect(inv.used).toBe(10);
-    frame();
-    expect(gameplay.interaction.target, 'the bundle is gone once emptied').toBeNull();
+    expect(inv.used, 'everything that was carried is gone').toBe(0);
+    expect(inv.items).toHaveLength(0);
+    expect(gameplay.health.value, 'and they come round with something left').toBeGreaterThan(0);
+    expect(gameplay.exposure.value).toBe(0);
+    expect(toasts.some((x) => x.includes('overwhelms you') && x.includes('gather'))).toBe(true);
   });
 
-  it('nothing drains, and nothing drops, while the clouds cover the moon', () => {
-    const { gameplay, drops, frame } = setup();
+  it('what was already offered stays at the temple; what came after has to be gathered again', () => {
+    const { gameplay, player, spots, frame } = setup();
+    const inv = gameplay.inventory;
+
+    // A first trip, offered: five flowers and two of the durva are before Bappa.
+    inv.add('flowers', 5);
+    inv.add('durva', 2);
+    player.feet.set(0, 0, 6.5);
+    frame();
+    frame(true);
+    expect(inv.offered('flowers')).toBe(5);
+    expect(inv.offered('durva')).toBe(2);
+
+    // A second trip, collected from the village itself, and then the moon catches them.
+    const bananas = spots.find((s) => s.itemId === 'bananas') as PujaItem;
+    const durva = spots.find((s) => s.itemId === 'durva' && s.currentQuantity > 0) as PujaItem;
+    bananas.interact({} as never);
+    durva.interact({} as never);
+    expect(inv.count('bananas')).toBeGreaterThan(0);
+    const before = { bananas: bananas.currentQuantity, durva: durva.currentQuantity };
+    expect(before.bananas, 'the bananas were taken from where they lay').toBeLessThan(bananas.initialQuantity);
+
+    player.feet.set(0, 0, -20);
+    collapse(gameplay, frame);
+
+    expect(inv.used, 'the second trip is gone').toBe(0);
+    expect(inv.offered('flowers'), 'the first trip is not').toBe(5);
+    expect(inv.offered('durva')).toBe(2);
+    expect(bananas.currentQuantity, 'the bananas are back where they were found').toBe(bananas.initialQuantity);
+    expect(inv.wanted('bananas'), 'and wanted again, from the start').toBeGreaterThan(0);
+  });
+
+  it('does not put back what Bappa already has in full', () => {
+    const { gameplay, player, spots, frame } = setup();
+    const inv = gameplay.inventory;
+    inv.add('coconut', 1);
+    player.feet.set(0, 0, 6.5);
+    frame();
+    frame(true);
+    expect(inv.offered('coconut')).toBe(1);
+
+    const coconut = spots.find((s) => s.itemId === 'coconut') as PujaItem;
+    coconut.currentQuantity = 0; // taken earlier
+    player.feet.set(0, 0, -20);
+    inv.add('rice', 2);
+    collapse(gameplay, frame);
+    expect(coconut.currentQuantity, 'the coconut is done with; nothing to restock').toBe(0);
+  });
+
+  it('losing the bag is not a way to be paid for the same things twice', () => {
+    const { gameplay, frame } = setup();
+    const before = gameplay.run.stats.itemsCollected;
+    gameplay.run.collected(6);
+    gameplay.inventory.add('flowers', 5);
+    gameplay.inventory.add('durva', 1);
+    collapse(gameplay, frame);
+    expect(gameplay.run.stats.itemsCollected, 'they no longer count as gathered').toBe(before);
+    expect(gameplay.run.stats.itemsLost).toBe(6);
+  });
+
+  it('nothing drains, and nothing is lost, while the clouds cover the moon', () => {
+    const { gameplay, frame } = setup();
     gameplay.inventory.add('modak', 5);
     for (let i = 0; i < 60 / DT; i++) frame();
-    expect(drops).toHaveLength(0);
+    expect(gameplay.inventory.used).toBe(5);
     expect(gameplay.exposure.value).toBe(0);
   });
 
@@ -123,10 +182,54 @@ describe('Gameplay', () => {
     frame();
     expect(gameplay.interaction.target?.id).toBe('temple:altar');
     frame(true);
-    expect(actions).toEqual(['Celebrate']);
+    expect(actions).toEqual(['Pranam']);
     expect(gameplay.inventory.used).toBe(0);
     expect(gameplay.inventory.offered('modak')).toBe(5);
     expect(gameplay.exposure.value).toBe(0);
+  });
+
+  it('the moonlight takes your strength, and only a roof gives it back', () => {
+    const { gameplay, frame } = setup();
+    expect(gameplay.health.value).toBe(100);
+
+    // Out in the open under a risen moon.
+    gameplay.moon.skipTo('active');
+    for (let i = 0; i < 5 / DT; i++) frame();
+    const hurt = gameplay.health.value;
+    expect(hurt, 'it falls').toBeLessThan(100);
+    expect(gameplay.health.draining).toBe(true);
+
+    // The clouds come back, but the player is still outside: it holds where it is.
+    gameplay.moon.skipTo('safe');
+    for (let i = 0; i < 10 / DT; i++) frame();
+    expect(gameplay.health.value, 'the open air mends nobody').toBe(hurt);
+    expect(gameplay.health.draining).toBe(false);
+    expect(gameplay.exposure.value, 'exposure, by contrast, does clear outdoors').toBe(0);
+  });
+
+  it('it is strength running out that empties the bag, not the exposure meter filling', () => {
+    const { gameplay, frame } = setup();
+    gameplay.inventory.add('flowers', 3);
+    gameplay.inventory.add('bananas', 4);
+    gameplay.moon.skipTo('active');
+
+    // Exposure fills first and pins there; nothing is lost for it.
+    let t = 0;
+    while (gameplay.exposure.value < 100 && t < 40) {
+      frame();
+      t += DT;
+    }
+    expect(gameplay.exposure.value).toBe(100);
+    expect(gameplay.inventory.used, 'a full exposure meter is a warning, not a failure').toBe(7);
+    expect(gameplay.health.value).toBeGreaterThan(0);
+
+    // Strength runs out a little later, and that is what costs you.
+    while (gameplay.health.collapses === 0 && t < 60) {
+      frame();
+      t += DT;
+    }
+    expect(gameplay.inventory.used).toBe(0);
+    expect(gameplay.health.value, 'and you come round with something left').toBeGreaterThan(0);
   });
 
   it('holds the moon back through the evening, then lets the night have it', () => {

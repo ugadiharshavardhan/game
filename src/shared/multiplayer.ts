@@ -120,6 +120,10 @@ export interface LeaderboardRow {
   campus: string;
   score: number;
   durationMs: number;
+  /** Whether that best run finished the puja. Absent on rows saved before it was recorded. */
+  complete?: boolean;
+  /** Offerings that run gathered. */
+  items?: number;
 }
 
 export interface TeamLeaderboardRow {

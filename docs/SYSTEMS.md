@@ -73,8 +73,7 @@ clip's midpoint) the system plays its **sound** and calls `interact`. A greyed-o
 bag) plays a soft "no" and says why. The player controller knows nothing about any of this.
 
 Interactables: puja items (Collect), shelter doors (Enter house / Leave house), locked doors
-(Knock), the temple altar (Offer / Pray), villagers (Talk — a few words of advice each), and the
-bundle you drop when the moon overwhelms you (Collect).
+(Knock), the temple altar (Offer / Pray), and villagers (Talk — a few words of advice each).
 
 The prompt: `[E] COLLECT` with a keyboard, `(A) COLLECT` with a controller, and a big tappable
 `COLLECT` / `ENTER` button on touch — floating over the thing itself.
@@ -86,9 +85,9 @@ what fits and leaves the rest lying there; nothing is taken beyond what the puja
 the temple, everything the puja still needs moves from the bag to Bappa.
 
 It is owned by the run, not the player's body: going indoors, coming out, moonlight, exploring —
-none of them touch it. **A failure under the moon drops half the bag (rounded down) where you
-stand, as a bundle you can pick up again** — never the whole bag, never a lone item, never
-anything already offered.
+none of them touch it. **A failure under the moon empties the bag.** What you carried is gone
+and the offerings are put back where they were found, to be gathered again from the start; what is
+already before Bappa stays there. Nothing is left on the ground to recover.
 
 The bag's screen (`I` or `Tab`; `Y` on a controller; the bag button on touch): slots with icons
 and counts, a capacity bar, the selected item's details, and tonight's puja at the bottom. Arrow
@@ -156,6 +155,35 @@ for the devtools. Nothing about it is astronomical; it is a timer with a nice cu
 and `mayRise` (false in the evening and, for good, from dawn). The gate can only hold the cycle
 at `safe`, which is why a moon caught by dawn always gets to fade out first.
 
+## Strength
+
+`src/game/health/HealthSystem.ts` — 0–100, and the run's only failure condition.
+
+`ExposureSystem` is the *pressure*: how much of the moon is on you this second, from the sky,
+the cover overhead, your gait and how far the nearest door is. `moonPressure()` is that judgement
+in one exported function, so health is costed by exactly the same maths the exposure meter uses
+rather than by a second copy of it. Health is what the pressure costs:
+
+| Where you are | What strength does |
+| --- | --- |
+| Outdoors, moon on you | falls, in proportion to the pressure |
+| Outdoors, clouds back | **holds** — the open air mends nobody |
+| Inside a shelter | comes back, after half a second, and only here |
+
+That middle row is the whole point of the bar. Exposure clears itself outdoors once the moon has
+gone, which makes a cloudy stretch a complete reprieve; health does not, so a night of being
+caught out accumulates and going home is worth doing for its own sake.
+
+An ordinary walk caught in the open runs it down in a little over twenty seconds; the worst the
+village can produce — a dead run across open ground a long way from a door — in about twelve. At
+zero the player is overwhelmed: the bag is emptied (see *The bag*), the nearest household
+takes them in, and `revive()` puts them back on their feet with 40. Nothing here can make a run
+unwinnable.
+
+The HUD draws it under the objective (`ui/components/HealthBar.tsx`), and the cold vignette at
+the edges of the screen follows it too — exposure fills in fifteen seconds and then sits pinned
+at the top, which would hold the overlay at full strength for most of a bad minute.
+
 ## What the moon changes
 
 **Light** (`MoonLightingController`). Four written-down moments — SUNSET, DUSK, MOONRISE,
@@ -168,8 +196,9 @@ sky shader, the fog, the exposure and the stars. The light is the sun until it s
 after; the hand-over happens at the darkest minute of dusk, when almost nothing is lit, so the
 change of direction cannot be seen. The moon rises as the night goes on (4° → 38°), the village's
 own fire (`lamps`, `flames` and the `lamplit` window material) is pushed up as the sky comes down,
-and bloom stays where it was: warm against cool, not a haze. Two low sheets of drifting mist fade
-in for the night, faded out near the camera so they never wash the screen.
+and bloom stays where it was: warm against cool, not a haze. There is no mist layer: flat sheets of
+it read as a milky slab across the middle of the screen once the moon was up, so the night's depth
+comes from the fog alone.
 
 **Sound** (`MoonAudioController`, `audio/Ambience.ts`). Five looping beds, all synthesised at
 start-up so the game ships no recordings and owes no licence: *evening* (breeze, birds, a far-off
@@ -296,7 +325,7 @@ one of them is audible, finite and never clipping.
 
 `src/game/core/quality.ts` holds one table — low, medium, high — and everything expensive reads a
 number from it: pixel ratio, shadows, MSAA, bloom, LOD and culling distances, the number of real
-lights, particles and ghosts, texture size and anisotropy, the mist, and the rate the ambience is
+lights, particles and ghosts, texture size and anisotropy, and the rate the ambience is
 synthesised at. `auto` picks by pointer type, cores and device memory; Settings overrides it. See
 [PERFORMANCE.md](PERFORMANCE.md).
 
@@ -313,3 +342,36 @@ In `npm run dev`, `window.__seva` drives the game for testing: `teleport`, `look
 `await walkTo(x, z, { run })`, `moon('active')` (or `'safe' | 'warning' | 'rising' | 'fading'`),
 `give('flowers', 3)`, `interact()`, `await enter('patil')`, `await leave()`, and `info()`
 (position, state, area, safe, exposure, moon, bag, target, draw calls).
+
+## The village map
+
+`game/map/MapSystem.ts` holds the rules, `ui/map/` draws them. Nothing is marked at the start. A
+villager who knows about an offering (`HINTS`) turns it into a faint *hint* — a soft glow round the
+nearest named house or shop, with a sentence such as "South-west · near the Patils’ house" — and
+walking within 12 m turns it into a clear *pin*. Picked-up offerings leave the map; if the moonlight
+takes the bag and they are put back, they return. The map is always north-up (north is −z, where the
+temple is). It is a canvas painted from `VILLAGE`, so it cannot drift from the level: a corner
+minimap centred on the player, and a full map on **M** (or the MAP button on a phone) with a compass
+and the same hints in words. While it is open, movement and the action button wait, as with the bag.
+
+The offering at the temple is a kneeling pranam (`Pranam`, 4.6 s, `proceduralClips.ts`): namaste,
+down onto the knees, forehead toward the ground with the hands stretched forward, and back up.
+The offering lands at the deepest point of the bow.
+
+## The people
+
+Three characters, all on the same 64-bone skeleton, built by `tools/blender/build_characters.py`
+from MPFB (CC0) into `public/assets/models/`: the man (`devotee.glb`, who is also the player), a
+woman in a saree (`woman.glb`) and the priest (`pujari.glb`, dhoti, saffron shawl, marigold garland,
+rudraksha beads, tripundra). Skin pores come from one shared tileable normal map
+(`public/assets/textures/skin_pores.png`, applied at runtime by `player/skinDetail.ts`).
+
+Every villager is a real skinned person with a mixer (`render/art/folk.ts`), so they move smoothly and
+are never a statue. `player/activityClips.ts` holds the slow looping work — Sweep, Rangoli, Wipe,
+Garland, HoldUp, Talk, Listen, Lamp, Arrange, Stringing, SitStool, SitEdge, Aarti, Pray, CarryWalk —
+and `activity.test.ts` measures each against the real skeleton (a sweeping hand stays low, a
+garland-hanger's hands stay over the head, the loop closes). The namaste is *solved per skeleton*
+(`fitNamaste`) so the palms actually meet. People at their work come from `layout.villagers`
+(`kind`, `activity`); people walking the lanes are in `render/art/life.villagers.ts`, slowly, and go
+home when the signs come. Props (broom, aarti lamp and bell, water pot, marigold string) are in
+`folkProps.ts`.

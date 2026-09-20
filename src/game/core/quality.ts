@@ -30,19 +30,17 @@ export interface QualityProfile {
   textureSize: number;
   /** Sample rate the ambience beds are synthesised at. */
   audioRate: number;
-  /** The low drift of mist between the houses. */
-  mist: boolean;
   /** Teammates drawn as ghosts at once. */
   ghosts: number;
 }
 
 export const PROFILES: Record<Exclude<QualityLevel, 'auto'>, QualityProfile> = {
   // A phone: half the pixels, no shadow map, no bloom, the village drawn two thirds as far.
-  low: { name: 'low', pixelRatio: 1, shadows: false, shadowMapSize: 1024, msaa: 0, bloom: false, detail: 0.68, lamps: 3, particles: 40, anisotropy: 2, textureSize: 512, audioRate: 16000, mist: false, ghosts: 2 },
+  low: { name: 'low', pixelRatio: 1, shadows: false, shadowMapSize: 1024, msaa: 0, bloom: false, detail: 0.68, lamps: 2, particles: 40, anisotropy: 2, textureSize: 512, audioRate: 16000, ghosts: 2 },
   // A laptop.
-  medium: { name: 'medium', pixelRatio: 1.5, shadows: true, shadowMapSize: 1536, msaa: 2, bloom: true, detail: 0.85, lamps: 5, particles: 90, anisotropy: 4, textureSize: 1024, audioRate: 22050, mist: true, ghosts: 3 },
+  medium: { name: 'medium', pixelRatio: 1.5, shadows: true, shadowMapSize: 1536, msaa: 2, bloom: true, detail: 0.85, lamps: 5, particles: 90, anisotropy: 4, textureSize: 1024, audioRate: 22050, ghosts: 3 },
   // A desktop with a real GPU: everything.
-  high: { name: 'high', pixelRatio: 2, shadows: true, shadowMapSize: 2048, msaa: 4, bloom: true, detail: 1, lamps: 6, particles: 140, anisotropy: 8, textureSize: 2048, audioRate: 22050, mist: true, ghosts: 3 },
+  high: { name: 'high', pixelRatio: 2, shadows: true, shadowMapSize: 2048, msaa: 4, bloom: true, detail: 1, lamps: 6, particles: 140, anisotropy: 8, textureSize: 2048, audioRate: 22050, ghosts: 3 },
 };
 
 /** What this device looks like, when the player has not chosen for themselves. */

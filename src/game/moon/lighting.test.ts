@@ -18,7 +18,6 @@ function rig() {
       // The controller reuses one object, so keep a copy of each moment.
       look = { ...l, lightColour: l.lightColour.clone(), hemiSky: l.hemiSky.clone(), hemiGround: l.hemiGround.clone(), fogColour: l.fogColour.clone(), skyTint: l.skyTint.clone() };
     },
-    update: () => {},
     dispose: () => {},
   };
   const lighting = new MoonLightingController(env);
@@ -61,11 +60,10 @@ describe('MoonLightingController', () => {
     expect(moonlight.skyBodyIsMoon).toBe(true);
   });
 
-  it('brings the stars, the moon and the mist out only after dusk', () => {
+  it('brings the stars and the moon out only after dusk', () => {
     const r = rig();
     expect(r.at(0).starOpacity).toBe(0);
     expect(r.at(0).moonOpacity).toBe(0);
-    expect(r.at(0).mistOpacity).toBe(0);
     let last = -1;
     for (let k = 0; k <= 1.0001; k += 0.05) {
       const look = r.at(k);

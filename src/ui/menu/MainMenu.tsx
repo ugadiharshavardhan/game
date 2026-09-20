@@ -30,6 +30,7 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
   const { profiles, teams, net } = services();
   const profile = useObservable(profiles.profile);
   const team = useObservable(teams.team);
+  const networked = useObservable(net.mode) === 'socket';
   const [chosen, setPanel] = useState<MenuPanel>(profile ? 'home' : 'name');
   // Being in a team *is* the lobby: whichever way you got there — made it, joined it, or came
   // back to it after a run — the panel that was taking you there gives way to it.
@@ -42,11 +43,37 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
 
   const home = () => setPanel('home');
 
+  // Any panel that opened from the home screen can be dismissed with Escape, whatever the height
+  // of the screen it opened on. (The name gate and a team lobby are things you are in, not on.)
+  const dismissible = panel === 'how' || panel === 'puja' || panel === 'settings' || panel === 'boards' || panel === 'create' || panel === 'join';
+  useEffect(() => {
+    if (!dismissible) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPanel('home');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dismissible]);
+
   return (
-    <main className="safe-top safe-bottom relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-night-950 px-6">
+    // The menu scrolls: on a phone held sideways the tall panels (how to play, the boards) are
+    // taller than the screen, and a clipped panel puts its Back button out of reach.
+    <main className="safe-top safe-bottom relative flex h-full w-full flex-col items-center overflow-y-auto overflow-x-hidden bg-night-950 px-6">
       <Backdrop />
 
-      <div className="relative z-10 flex w-full max-w-md flex-col items-center py-8">
+      {dismissible && (
+        <button
+          type="button"
+          onClick={home}
+          aria-label="Close"
+          style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}
+          className="fixed right-4 top-4 z-30 grid h-11 w-11 place-items-center rounded-full border border-lamp-200/25 bg-night-950/80 text-xl leading-none text-lamp-200 transition hover:border-lamp-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-lamp-400/30 active:scale-95"
+        >
+          <span aria-hidden>×</span>
+        </button>
+      )}
+
+      <div className="relative z-10 my-auto flex w-full max-w-md shrink-0 flex-col items-center py-8">
         <header className={`text-center transition-all duration-700 ${panel === 'home' || panel === 'name' ? 'mb-8' : 'mb-5 scale-90 opacity-80'}`}>
           <p className="text-[10px] uppercase tracking-[0.45em] text-dusk-400">Ganesh Chaturthi</p>
           <h1 className="mt-2 font-display text-4xl leading-none text-lamp-200 drop-shadow-[0_4px_24px_rgba(0,0,0,0.55)] sm:text-5xl">Moonlight Seva</h1>
@@ -92,7 +119,7 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
                 change
               </button>
             </p>
-            {!net.networked && (
+            {!networked && (
               <p className="mt-2 text-center text-[10px] leading-relaxed text-dusk-400/70">
                 No session server: teams play across tabs on this device.
               </p>
@@ -145,7 +172,7 @@ function Secondary({ onClick, children }: { onClick: () => void; children: React
  */
 function Backdrop() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
       {/* Through BASE_URL, so the menu still finds its village when the game is served from a
           sub-path (GitHub Pages serves a project at /repo-name/). */}
       <div

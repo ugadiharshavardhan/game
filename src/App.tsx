@@ -7,6 +7,7 @@ import type { AppState, GameSettings, PlayerStateName, RunResult } from './share
 import { GameCanvas } from './ui/components/GameCanvas';
 import { Hud } from './ui/components/Hud';
 import { InventoryUI } from './ui/components/InventoryUI';
+import { MapOverlay } from './ui/map/MapOverlay';
 import { type CameraSettings, PauseOverlay } from './ui/components/PauseOverlay';
 import { ResultsScreen } from './ui/components/ResultsScreen';
 import { PerfOverlay } from './ui/components/PerfOverlay';
@@ -45,6 +46,8 @@ export default function App() {
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [bagOpen, setBagOpen] = useState(false);
   const bagOpenRef = useRef(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapOpenRef = useRef(false);
   const [bag, setBag] = useState<InventorySnapshot>(EMPTY_BAG);
   const [icons, setIcons] = useState<Partial<Record<ItemId, string>>>({});
   const [device, setDevice] = useState<InputDevice>(initialDevice);
@@ -94,6 +97,8 @@ export default function App() {
     setResult(r);
     setBagOpen(false);
     bagOpenRef.current = false;
+    setMapOpen(false);
+    mapOpenRef.current = false;
     setAppState('results');
     profiles.recordRun(r.breakdown.total);
     if (profile) scores.submit(profile.playerId, session.session.get()?.sessionId ?? null, r);
@@ -120,6 +125,15 @@ export default function App() {
   }, []);
   useGameEvent('ui:inventory-toggle', () => openBag(!bagOpenRef.current));
 
+  const openMap = useCallback((open: boolean) => {
+    if (open === mapOpenRef.current) return;
+    mapOpenRef.current = open;
+    setMapOpen(open);
+    EventBus.emit('game:map-open', { open });
+    // Free the mouse so the map's buttons can be clicked (this must not read as "pause").
+    if (open && document.pointerLockElement) document.exitPointerLock();
+  }, []);
+
   const changeSettings = useCallback((next: GameSettings) => {
     setSettings(next);
     saveSettings(next);
@@ -137,6 +151,8 @@ export default function App() {
     setPaused(false);
     bagOpenRef.current = false;
     setBagOpen(false);
+    mapOpenRef.current = false;
+    setMapOpen(false);
     setCinematic(false);
     setAppState('menu');
     sync.clear();
@@ -167,8 +183,18 @@ export default function App() {
         EventBus.emit('game:skip-cinematic');
         return;
       }
+      if (event.code === 'KeyM') {
+        openBag(false);
+        openMap(!mapOpenRef.current);
+        return;
+      }
+      if (event.key === 'Escape' && mapOpenRef.current) {
+        openMap(false);
+        return;
+      }
       if (event.code === 'KeyI' || event.code === 'Tab') {
         event.preventDefault();
+        openMap(false);
         openBag(!bagOpenRef.current);
         return;
       }
@@ -190,12 +216,12 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [appState, cinematic, openBag]);
+  }, [appState, cinematic, openBag, openMap]);
 
   // While the mouse is captured the browser swallows Esc and just releases the
   // pointer, so losing the pointer lock is the desktop "pause" signal.
   useGameEvent('ui:pointer-lock', ({ locked }) => {
-    if (!locked && appState === 'playing' && !bagOpenRef.current && !cinematic) setPaused(true);
+    if (!locked && appState === 'playing' && !bagOpenRef.current && !mapOpenRef.current && !cinematic) setPaused(true);
   });
 
   // React owns pause state; the engine only obeys. One owner, one direction.
@@ -228,15 +254,17 @@ export default function App() {
 
       {appState === 'playing' && !paused && (
         <>
-          <Hud device={device} snapshot={bag} icons={icons} onOpenBag={() => openBag(true)} cinematic={cinematic} />
+          <Hud device={device} snapshot={bag} icons={icons} onOpenBag={() => openBag(true)} onOpenMap={() => openMap(true)} cinematic={cinematic} />
           {touch && !cinematic && (
             <TouchControls
               onOpenBag={() => openBag(true)}
+              onOpenMap={() => openMap(true)}
               onPause={() => setPaused(true)}
               action={prompt ? { verb: prompt.mobileVerb, enabled: prompt.enabled } : null}
               sneaking={playerState === 'sneaking'}
             />
           )}
+          {mapOpen && <MapOverlay onClose={() => openMap(false)} />}
           <InventoryUI open={bagOpen} onClose={() => openBag(false)} snapshot={bag} icons={icons} device={device} />
         </>
       )}

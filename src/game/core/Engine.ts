@@ -24,6 +24,7 @@ import { type CameraUserSettings, ThirdPersonCamera } from '../camera/ThirdPerso
 import { DEFAULT_PLAYER_CONFIG, validatePlayerConfig } from '../config/playerConfig';
 import { Gameplay } from '../Gameplay';
 import { Player } from '../player/Player';
+import { applySkinDetail, loadSkinDetail } from '../player/skinDetail';
 import { buildTestbed } from '../world/Testbed';
 import type { World } from '../world/World';
 import { AudioBank } from './AudioBank';
@@ -38,8 +39,12 @@ import { Tutorial, TUTORIAL_MOON, TUTORIAL_NIGHT } from '../tutorial/Tutorial';
 import { Input } from './Input';
 import { Physics } from './Physics';
 import { profileFor, type QualityProfile } from './quality';
+import { ResolutionGovernor } from './ResolutionGovernor';
 
 const BASE = import.meta.env.BASE_URL;
+
+/** Frames closer together than this are skipped (a little under 1/60 s, so a 60 Hz screen keeps every one). */
+const MIN_FRAME_MS = 14;
 /** Bloom strength: restrained by day, a touch more once the only light is fire and moon. */
 const DAY_BLOOM = 0.2;
 const NIGHT_BLOOM = 0.32;
@@ -69,6 +74,7 @@ export class Engine {
   private readonly resizeObserver: ResizeObserver;
   private readonly input: Input;
   private readonly bank = new AudioBank();
+  /** Null on a phone: with no bloom and no multisampling there is nothing for it to do. */
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
   private ambience: Ambience | null = null;
@@ -87,6 +93,10 @@ export class Engine {
   private readonly reportPerf = typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf');
   private perfFrames = 0;
   private perfTime = 0;
+  /** Trades pixels for frame rate when this device is not keeping up. */
+  private readonly governor: ResolutionGovernor;
+  private lastFrameAt = 0;
+  private mapTimer = 0;
   private paused = false;
   private pendingCameraSettings: CameraUserSettings | null = null;
   private disposed = false;
@@ -98,7 +108,9 @@ export class Engine {
     this.options = options;
     this.quality = profileFor(options.quality);
     this.renderer = new WebGLRenderer({ antialias: this.quality.msaa === 0, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
+    const sharpest = Math.min(window.devicePixelRatio, this.quality.pixelRatio);
+    this.governor = new ResolutionGovernor({ ceiling: sharpest, floor: Math.max(0.5, sharpest * 0.5) });
+    this.renderer.setPixelRatio(sharpest);
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.74;
@@ -154,9 +166,10 @@ export class Engine {
       const { buildVillage } = await import('../world/village/Village');
       return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality);
     };
-    const [world, gltf] = await Promise.all([
+    const [world, gltf, pores] = await Promise.all([
       buildWorld(),
       new GLTFLoader().loadAsync(`${BASE}assets/models/devotee.glb`),
+      loadSkinDetail().catch(() => null),
       this.loadAudio(),
     ]);
     if (this.disposed) {
@@ -164,6 +177,7 @@ export class Engine {
       return;
     }
     this.world = world;
+    if (pores) applySkinDetail(gltf.scene, pores);
     // The devotee carries no animation of his own: his clips are made here, once, and the
     // teammates' ghosts play the very same ones.
     const clips = gltf.animations.length
@@ -205,20 +219,25 @@ export class Engine {
       this.unsubscribers.push(EventBus.on('game:skip-tutorial', () => this.tutorial?.skip()));
     }
 
-    const size = this.renderer.getSize(new Vector2());
-    // Render into a multisampled target: without it, post-processing silently drops the
-    // renderer's antialiasing — and alpha-to-coverage foliage needs MSAA to smooth its edges.
-    this.composer = new EffectComposer(
-      this.renderer,
-      new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: this.renderer.capabilities.isWebGL2 ? this.quality.msaa : 0 }),
-    );
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    // High threshold: lamps, flames and the sun's disc bloom; lit walls and sky do not.
-    if (this.quality.bloom) {
-      this.bloom = new UnrealBloomPass(size, DAY_BLOOM, 0.55, 1.45);
-      this.composer.addPass(this.bloom);
+    // Post-processing exists for bloom and for multisampling the scene. A phone has neither, and
+    // going through a half-float target and a full-screen output pass just to tone-map costs
+    // it two extra trips over every pixel — so it draws straight to the screen instead.
+    if (this.quality.bloom || this.quality.msaa > 0) {
+      const size = this.renderer.getSize(new Vector2());
+      // Render into a multisampled target: without it, post-processing silently drops the
+      // renderer's antialiasing — and alpha-to-coverage foliage needs MSAA to smooth its edges.
+      this.composer = new EffectComposer(
+        this.renderer,
+        new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: this.renderer.capabilities.isWebGL2 ? this.quality.msaa : 0 }),
+      );
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      // High threshold: lamps, flames and the sun's disc bloom; lit walls and sky do not.
+      if (this.quality.bloom) {
+        this.bloom = new UnrealBloomPass(size, DAY_BLOOM, 0.55, 1.45);
+        this.composer.addPass(this.bloom);
+      }
+      this.composer.addPass(new OutputPass());
     }
-    this.composer.addPass(new OutputPass());
     this.resize();
 
     this.unsubscribers.push(
@@ -266,14 +285,22 @@ export class Engine {
   }
 
   private tick(): void {
+    // A 120 Hz phone would otherwise draw twice as many frames as anyone can use, and get hot
+    // and slow for it. Sixty is the ceiling; a 60 Hz screen never gets near this gate.
+    const now = performance.now();
+    if (now - this.lastFrameAt < MIN_FRAME_MS) return;
+    this.lastFrameAt = now;
     this.renderer.info.reset();
     this.timer.update();
-    const dt = Math.min(this.timer.getDelta(), 1 / 20);
-    if (!this.player || !this.cameraRig || !this.physics || !this.composer || !this.gameplay) return;
+    const elapsed = this.timer.getDelta();
+    const dt = Math.min(elapsed, 1 / 20);
+    if (!this.player || !this.cameraRig || !this.physics || !this.gameplay) return;
     if (!this.paused) {
+      const ratio = this.governor.frame(elapsed);
+      if (ratio !== null) this.setPixelRatio(ratio);
       this.input.update();
       // While the bag is open, the stick and arrows browse it instead of walking.
-      if (this.gameplay.inventoryOpen) {
+      if (this.gameplay.inventoryOpen || this.gameplay.mapOpen) {
         this.input.move.set(0, 0);
         this.input.crouchPressed = false;
       }
@@ -289,6 +316,12 @@ export class Engine {
       // the sky the night actually has, not just the moon: a cloudy 1 a.m. is dark too.
       if (this.bloom) this.bloom.strength = DAY_BLOOM + (NIGHT_BLOOM - DAY_BLOOM) * Math.max(moon.nightBase, moon.moonlight);
       this.input.endFrame();
+      // Where we are, for the map — ten times a second is plenty for a moving arrow.
+      this.mapTimer -= dt;
+      if (this.mapTimer <= 0) {
+        this.mapTimer = 0.1;
+        EventBus.emit('ui:map-player', { x: this.player.feet.x, z: this.player.feet.z, yaw: this.player.yaw });
+      }
       // Teammates: tell them where we are, then draw where they are.
       this.options.link?.send({
         x: this.player.feet.x,
@@ -302,7 +335,8 @@ export class Engine {
       this.ghosts?.update(dt);
       this.tutorial?.update(dt);
     }
-    this.composer.render();
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     if (this.reportPerf) this.reportPerformance(dt);
   }
 
@@ -349,6 +383,13 @@ export class Engine {
     this.bank.setPaused(paused);
     if (paused) this.input.releasePointer();
     this.timer.reset(); // don't let the paused time land in the next frame
+  }
+
+  /** Draws at a new sharpness: the governor's answer to a device that is not keeping up. */
+  private setPixelRatio(ratio: number): void {
+    this.renderer.setPixelRatio(ratio);
+    this.composer?.setPixelRatio(ratio);
+    this.resize();
   }
 
   private resize(): void {

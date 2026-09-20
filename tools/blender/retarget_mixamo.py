@@ -3,7 +3,7 @@ Retargets Mixamo clips onto the devotee skeleton and exports public/assets/model
 
     blender -b -P tools/blender/retarget_mixamo.py -- --project <game repo>
 
-Input: tools/blender/Devotee.blend (from build_devotee.py) and art/mixamo/<Clip>.fbx downloaded from mixamo.com
+Input: tools/blender/Devotee.blend (from build_characters.py --role player) and art/mixamo/<Clip>.fbx downloaded from mixamo.com
 (Y Bot, "FBX Binary", "Without Skin", 30 fps). Both skeletons use Mixamo bone names, but their rest poses differ
 (MakeHuman A-pose vs Mixamo T-pose, different bone rolls), so rotations are transferred through the rest poses:
 

@@ -1,6 +1,6 @@
 /**
  * The sky rig: sky dome, the one shadow-casting light (the sun, and later the moon), the
- * hemisphere fill, fog, stars, the moon's disc and a low drift of mist. It holds no opinion about
+ * hemisphere fill, fog, stars and the moon's disc. It holds no opinion about
  * the time of night — MoonLightingController hands it a `SkyLook` and it applies it.
  *
  * The look it starts on is the evening of Ganesh Chaturthi: the monsoon's tail, a sun a few
@@ -45,8 +45,6 @@ export interface EnvironmentOptions {
   /** Half-width of the sun's shadow frustum, metres. Larger = softer, cheaper-looking shadows. */
   shadowExtent: number;
   shadowMapSize: number;
-  /** The low drift of mist: two more transparent sheets, which a phone can do without. */
-  mist: boolean;
 }
 
 /** One moment of sky, as the lighting controller describes it. */
@@ -75,8 +73,6 @@ export interface SkyLook {
   skyBodyIsMoon: boolean;
   starOpacity: number;
   moonOpacity: number;
-  /** A low drift of mist between the houses. */
-  mistOpacity: number;
   /** Tone mapping, so a dark night is still readable. */
   exposure: number;
 }
@@ -91,8 +87,6 @@ export interface Environment {
   follow(target: Vector3): void;
   /** Applies a moment of sky. */
   setLook(look: SkyLook): void;
-  /** Drifts the mist. */
-  update(dt: number): void;
   dispose(): void;
 }
 
@@ -105,7 +99,6 @@ export const EVENING: EnvironmentOptions = {
   fogDensity: 0.0115,
   shadowExtent: 26,
   shadowMapSize: 2048,
-  mist: true,
 };
 
 /** Radius of the night sky's dome — inside the camera's far plane (500 m). */
@@ -170,22 +163,22 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
   const hemi = new HemisphereLight('#7d88bd', '#5a3f2a', 0.52);
   scene.add(hemi);
 
-  // The night sky's furniture, and the mist between the houses.
+  // The night sky's furniture. There is deliberately no mist here: flat sheets laid over the
+  // village read as a milky slab across the middle of the screen the moment the moon is up, and
+  // the exponential fog already gives the night its depth.
   const heavens = new Group();
   heavens.name = 'Heavens';
   const stars = starField();
   const moon = moonDisc();
-  const mist = o.mist ? mistLayers() : new Group();
-  heavens.add(stars, moon, mist);
+  heavens.add(stars, moon);
   heavens.visible = false;
   scene.add(heavens);
-  disposables.push(stars.geometry, stars.material as PointsMaterial, ...discDisposables(moon), ...mistDisposables(mist));
+  disposables.push(stars.geometry, stars.material as PointsMaterial, ...discDisposables(moon));
 
   const lightDir = sunDir.clone();
   const texel = (o.shadowExtent * 2) / o.shadowMapSize;
   const snapped = new Vector3();
   const moonPos = new Vector3();
-  let mistTime = 0;
 
   return {
     sun,
@@ -233,21 +226,7 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
       (moon.material as MeshBasicMaterial).opacity = look.moonOpacity;
       for (const c of moon.children) ((c as Mesh).material as MeshBasicMaterial).opacity = look.moonOpacity * 0.5;
       (stars.material as PointsMaterial).opacity = look.starOpacity;
-      for (const m of mist.children) ((m as Mesh).material as MeshBasicMaterial).opacity = look.mistOpacity;
-      mist.visible = mist.children.length > 0 && look.mistOpacity > 0.005;
-      heavens.visible = look.starOpacity > 0.01 || look.moonOpacity > 0.01 || mist.visible;
-    },
-
-    update(dt: number) {
-      if (!mist.visible) return;
-      // The mist drifts, slowly, and never repeats in a way you can see.
-      mistTime += dt;
-      mist.children.forEach((m, i) => {
-        const k = 1 + i * 0.37;
-        m.position.x = Math.sin(mistTime * 0.013 * k + i) * 26;
-        m.position.z = Math.cos(mistTime * 0.011 * k + i * 2) * 26;
-        m.rotation.y = mistTime * 0.004 * (i % 2 ? 1 : -1);
-      });
+      heavens.visible = look.starOpacity > 0.01 || look.moonOpacity > 0.01;
     },
 
     dispose() {
@@ -342,65 +321,6 @@ function moonDisc(): Mesh {
   return moon;
 }
 
-/**
- * Mist: two big, slowly drifting sheets just above the ground. The cheapest "volumetric" there
- * is — but only if it stays in the distance. A sheet seen edge-on from a metre away fills the
- * screen with grey, so the shader fades it out near the camera: mist gathers down the lane and
- * around the far houses, never over the player's shoulder.
- */
-function mistLayers(): Group {
-  const tex = canvasTexture(256, (g, w) => {
-    const img = g.createImageData(w, w);
-    // Soft value noise, faded to nothing at the edges so the sheets never show a border.
-    const grid = 8;
-    const cells = Array.from({ length: (grid + 1) * (grid + 1) }, () => Math.random());
-    const at = (x: number, y: number) => cells[y * (grid + 1) + x];
-    for (let y = 0; y < w; y++) {
-      for (let x = 0; x < w; x++) {
-        const fx = (x / w) * grid;
-        const fy = (y / w) * grid;
-        const x0 = Math.floor(fx);
-        const y0 = Math.floor(fy);
-        const tx = fx - x0;
-        const ty = fy - y0;
-        const sx = tx * tx * (3 - 2 * tx);
-        const sy = ty * ty * (3 - 2 * ty);
-        const v =
-          at(x0, y0) * (1 - sx) * (1 - sy) + at(x0 + 1, y0) * sx * (1 - sy) + at(x0, y0 + 1) * (1 - sx) * sy + at(x0 + 1, y0 + 1) * sx * sy;
-        const edge = Math.min(1, Math.min(x, y, w - x, w - y) / (w * 0.22));
-        const a = Math.max(0, v - 0.35) * 1.5 * edge * edge;
-        const i = (y * w + x) * 4;
-        img.data[i] = 255;
-        img.data[i + 1] = 255;
-        img.data[i + 2] = 255;
-        img.data[i + 3] = Math.round(a * 255);
-      }
-    }
-    g.putImageData(img, 0, 0);
-  });
-  const group = new Group();
-  for (let i = 0; i < 2; i++) {
-    const mat = new MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, fog: true, color: new Color('#64769f') });
-    mat.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader
-        .replace('void main() {', 'varying vec3 vMistView;\nvoid main() {')
-        .replace(
-          '#include <opaque_fragment>',
-          'gl_FragColor.a *= smoothstep( 8.0, 30.0, length( vMistView ) );\n#include <opaque_fragment>',
-        );
-      shader.vertexShader = shader.vertexShader
-        .replace('void main() {', 'varying vec3 vMistView;\nvoid main() {')
-        .replace('#include <fog_vertex>', '#include <fog_vertex>\nvMistView = ( modelViewMatrix * vec4( transformed, 1.0 ) ).xyz;');
-    };
-    mat.customProgramCacheKey = () => 'mist';
-    const m = new Mesh(new PlaneGeometry(140, 140).rotateX(-Math.PI / 2), mat);
-    m.position.y = 0.6 + i * 1.1;
-    m.renderOrder = 1;
-    group.add(m);
-  }
-  return group;
-}
-
 function discDisposables(moon: Mesh): Array<{ dispose(): void }> {
   const out: Array<{ dispose(): void }> = [];
   moon.traverse((o) => {
@@ -410,17 +330,6 @@ function discDisposables(moon: Mesh): Array<{ dispose(): void }> {
     out.push(m.geometry, mat);
     if (mat.map) out.push(mat.map);
   });
-  return out;
-}
-
-function mistDisposables(mist: Group): Array<{ dispose(): void }> {
-  const out: Array<{ dispose(): void }> = [];
-  for (const m of mist.children as Mesh[]) {
-    out.push(m.geometry, m.material as MeshBasicMaterial);
-  }
-  const first = mist.children[0] as Mesh | undefined;
-  const map = first && (first.material as MeshBasicMaterial).map;
-  if (map) out.push(map);
   return out;
 }
 

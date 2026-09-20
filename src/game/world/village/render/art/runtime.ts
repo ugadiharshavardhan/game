@@ -31,7 +31,7 @@ export interface ArtContext extends VisualsContext {
   /** The terrain (null when built with ?only= without 'ground'): heights and surface weights. */
   ground: Ground | null;
   /** Live state shared with modules: the temple's glow, the sky, and where the player is. */
-  shared: { templeGlow: number; moonlight: number; goingHome: boolean; dangerous: boolean; noise: number; player: Vector3 };
+  shared: { templeGlow: number; night: number; moonlight: number; goingHome: boolean; dangerous: boolean; noise: number; player: Vector3 };
   /** Per-frame hooks (swaying cloth, flickering signs). */
   tick: Array<(dt: number, time: number, camera: Vector3) => void>;
 }
@@ -139,6 +139,8 @@ interface Anchor {
   colour: Color;
   intensity: number;
   distance: number;
+  /** This flame's own phase, so no two lamps in the village flicker together. */
+  seed: number;
 }
 
 /**
@@ -152,6 +154,7 @@ export class LampPool {
   private readonly assigned: (Anchor | null)[] = [];
   private readonly fade: number[] = [];
   private timer = 0;
+  private time = 0;
 
   constructor(scene: Scene | Object3D, size = 6) {
     for (let i = 0; i < size; i++) {
@@ -165,10 +168,20 @@ export class LampPool {
   }
 
   anchor(p: Vector3, intensity = 2.2, colour = '#ff9a3c', distance = 6): void {
-    this.anchors.push({ p: p.clone(), colour: new Color(colour), intensity, distance });
+    // Seeded from the lamp's own position: the same lamp flickers the same way every run, and
+    // no two lamps share a phase.
+    const seed = ((p.x * 12.9898 + p.z * 78.233) * 43758.5453) % (Math.PI * 2);
+    this.anchors.push({ p: p.clone(), colour: new Color(colour), intensity, distance, seed });
   }
 
-  update(dt: number, camera: Vector3, flicker: number): void {
+  /**
+   * @param brightness the village's own fire, scaled by how dark the sky is. Not a flicker: each
+   *   lamp makes its own, from its own phase. One shared flicker scalar made every lamp in the
+   *   village pulse in step, which outdoors is lost against the sky but indoors — where these
+   *   lights are very nearly the whole of the lighting — read as the room itself throbbing.
+   */
+  update(dt: number, camera: Vector3, brightness: number): void {
+    this.time += dt;
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = 0.4;
@@ -192,11 +205,18 @@ export class LampPool {
         }
       }
     }
+    const t = this.time;
     for (let i = 0; i < this.lights.length; i++) {
       const target = this.assigned[i] ? 1 : 0;
       this.fade[i] += (target - this.fade[i]) * Math.min(dt * 3, 1);
       const a = this.assigned[i];
-      this.lights[i].intensity = a ? a.intensity * this.fade[i] * flicker : this.lights[i].intensity * this.fade[i];
+      if (!a) {
+        this.lights[i].intensity *= this.fade[i];
+        continue;
+      }
+      // A flame of its own: gentler than the old shared wobble, and out of step with its neighbours.
+      const flicker = 0.955 + 0.03 * Math.sin(t * 8.7 + a.seed) + 0.02 * Math.sin(t * 19.7 + a.seed * 2.3);
+      this.lights[i].intensity = a.intensity * this.fade[i] * brightness * flicker;
     }
   }
 

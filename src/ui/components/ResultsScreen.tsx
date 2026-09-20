@@ -49,7 +49,16 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
     return () => clearInterval(tick);
   }, [team, sync]);
 
-  if (view !== 'result') return <Boards initial={view === 'teams' ? 'teams' : 'individual'} onBack={() => setView('result')} />;
+  if (view !== 'result') {
+    return (
+      <main className="safe-top safe-bottom absolute inset-0 z-40 flex overflow-y-auto bg-night-950/95 px-5">
+        <div className="m-auto flex w-full max-w-md shrink-0 flex-col items-center py-8">
+          <p className="mb-5 text-[10px] uppercase tracking-[0.45em] text-dusk-400">Moonlight Seva</p>
+          <Boards initial={view === 'teams' ? 'teams' : 'individual'} onBack={() => setView('result')} />
+        </div>
+      </main>
+    );
+  }
 
   // Dawn ended the run instead of the puja doing it. Everything gathered still counts; the two
   // things that only a finished puja earns are shown as the zeroes they are, not hidden.
@@ -75,8 +84,8 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
   ];
 
   return (
-    <main className="safe-top safe-bottom absolute inset-0 z-40 grid place-items-center overflow-y-auto bg-night-950/95 px-5 py-8">
-      <div className="w-full max-w-lg text-center">
+    <main className="safe-top safe-bottom absolute inset-0 z-40 flex overflow-y-auto bg-night-950/95 px-5 py-8">
+      <div className="m-auto w-full max-w-lg shrink-0 text-center">
         <p className="text-[10px] uppercase tracking-[0.45em] text-dusk-400">Moonlight Seva</p>
         <h1 className="mt-3 font-display text-3xl text-lamp-200 sm:text-4xl">
           {done ? (

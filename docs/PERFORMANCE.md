@@ -24,7 +24,6 @@ override it in Settings.
 | Ambient particles | 40 | 90 | 140 |
 | Texture width cap | 512 | 1024 | 2048 |
 | Anisotropy | 2 | 4 | 8 |
-| Ground mist | off | on | on |
 | Ghost teammates drawn | 2 | 3 | 3 |
 | Ambience synthesis rate | 16 kHz | 22 kHz | 22 kHz |
 

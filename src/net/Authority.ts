@@ -46,6 +46,8 @@ interface BestRun {
   campus: string;
   score: number;
   durationMs: number;
+  complete?: boolean;
+  items?: number;
   at: number;
 }
 
@@ -333,6 +335,8 @@ export class Authority {
         campus: c.profile.campus,
         score,
         durationMs: run.stats.durationMs,
+        complete: run.stats.pujaComplete,
+        items: run.stats.itemsCollected,
         at: this.now(),
       });
     }
@@ -384,7 +388,7 @@ export class Authority {
     return [...this.best.values()]
       .sort((a, b) => b.score - a.score || a.durationMs - b.durationMs)
       .slice(0, BOARD_SIZE)
-      .map((r, i) => ({ rank: i + 1, playerId: r.playerId, displayName: r.displayName, campus: r.campus, score: r.score, durationMs: r.durationMs }));
+      .map((r, i) => ({ rank: i + 1, playerId: r.playerId, displayName: r.displayName, campus: r.campus, score: r.score, durationMs: r.durationMs, complete: r.complete, items: r.items }));
   }
 
   private teamBoard(): TeamLeaderboardRow[] {

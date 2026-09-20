@@ -122,7 +122,7 @@ real controller over the real colliders with the camera checked every frame.
 ## Character pipeline (Blender 4.5 + MPFB 2)
 
 ```bash
-blender -b -P tools/blender/build_devotee.py -- --project .     # build + export public/assets/models/devotee.glb
+blender -b -P tools/blender/build_characters.py -- --project .  # the man, the woman and the pujari -> public/assets/models/*.glb
 blender -b -P tools/blender/retarget_mixamo.py -- --project .   # bake art/mixamo/*.fbx clips into the .glb
 ```
 

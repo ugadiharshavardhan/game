@@ -46,7 +46,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ITEM_IDS, type ItemId } from '../../../../../shared/items';
 import type { PujaItemVisual } from '../../../../items/PujaItem';
 import type { OfferingSpotDef, OfferingSurface } from '../../types';
-import type { DropVisual } from '../types';
 import { flame, glow, rng } from './canvasTextures';
 import { FestBatch } from './festival.kit';
 import { basket, coconut, diya, durva, flowerHeap, hibiscus, MARIGOLDS, modak, speckle, thali, twoSided } from './festival.things';
@@ -544,7 +543,6 @@ function star(a: ArtContext) {
 
 export interface PujaItemArt {
   visuals: Map<string, PujaItemVisual>;
-  makeDropVisual(at: Vector3): DropVisual;
   icons: Promise<Partial<Record<ItemId, string>>>;
 }
 
@@ -554,7 +552,6 @@ export function buildPujaItems(a: ArtContext): PujaItemArt {
   for (const spot of a.layout.offerings) visuals.set(spot.id, visualFor(a, spot));
   return {
     visuals,
-    makeDropVisual: (at) => dropVisual(a, at),
     // After the first frame's work: the icons don't hold up loading.
     icons: new Promise((resolve) => setTimeout(() => resolve(renderItemIcons(a)), 0)),
   };
@@ -568,32 +565,6 @@ function visualFor(a: ArtContext, spot: OfferingSpotDef): ItemVisual {
   v.outer.rotation.y = spot.rot;
   a.root.add(v.outer);
   a.culler.add(v.outer, new Vector3(spot.x, 0, spot.z), CULL);
-  return v;
-}
-
-/**
- * Offerings that fell when the moon overwhelmed the player: a red cloth bundle (potli), knotted at
- * the top, with a marigold or two spilled beside it.
- */
-function dropVisual(a: ArtContext, at: Vector3): DropVisual {
-  const base = new FestBatch();
-  const knot: [number, number][] = [[0.001, 0], [0.1, 0.01], [0.15, 0.06], [0.14, 0.12], [0.08, 0.18], [0.035, 0.2], [0.05, 0.25], [0.03, 0.27], [0.001, 0.27]];
-  const g = lathe(knot.map(([x, y]) => [x * S, y * S] as [number, number]), 14);
-  const pos = g.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) {
-    const ang = Math.atan2(pos.getZ(i), pos.getX(i));
-    const k = 1 + 0.08 * Math.sin(ang * 7) * Math.min(pos.getY(i) / 0.1, 1);
-    pos.setX(i, pos.getX(i) * k);
-    pos.setZ(i, pos.getZ(i) * k);
-  }
-  g.computeVertexNormals();
-  base.add('cloth', g, '#a8242a');
-  base.add('paint', new CylinderGeometry(0.05 * S, 0.05 * S, 0.02 * S, 10).translate(0, 0.19 * S, 0), TONE.marigoldYellow);
-  for (const [x, z, c] of [[0.22, 0.08, TONE.marigold], [0.18, -0.14, TONE.marigoldYellow]] as const) base.add('paint', new IcosahedronGeometry(0.03 * S, 0).translate(x, 0.02, z), c);
-  const arr: Arrangement = { base, units: [], mode: 'discrete', sway: [], swayAmount: 0, flames: [], steam: false, top: new Vector3(0, 0.3 * S, 0) };
-  const v = new ItemVisual(a, arr, 1, Math.floor(at.x * 100 + at.z));
-  v.outer.position.copy(at);
-  a.root.add(v.outer);
   return v;
 }
 

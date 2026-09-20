@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { InputDevice } from '../../shared/events';
 import { ITEM_IDS, ITEMS, type InventorySnapshot, type ItemId } from '../../shared/items';
-import type { ExposureLevel, PlayerStateName } from '../../shared/types';
+import type { PlayerStateName } from '../../shared/types';
 import { useGameEvent } from '../hooks/useGameEvent';
 import { InteractionPrompt } from './InteractionPrompt';
+import { HealthBar } from './HealthBar';
 import { ItemIcon } from './InventoryUI';
+import { Minimap } from '../map/Minimap';
 import { MoonUI } from './MoonUI';
 import { NightClockUI } from './NightClockUI';
 
@@ -13,6 +15,7 @@ interface HudProps {
   snapshot: InventorySnapshot;
   icons: Partial<Record<ItemId, string>>;
   onOpenBag: () => void;
+  onOpenMap: () => void;
   cinematic: boolean;
 }
 
@@ -29,11 +32,11 @@ interface Toast {
  *
  * The wrapper is pointer-events-none so touches reach the canvas; only real controls opt back in.
  */
-export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps) {
+export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }: HudProps) {
   const [state, setState] = useState<PlayerStateName>('idle');
   const [locked, setLocked] = useState(false);
   const [area, setArea] = useState<{ name: string; open: boolean; key: number } | null>(null);
-  const [exposure, setExposure] = useState<{ value: number; level: ExposureLevel }>({ value: 0, level: 'calm' });
+  const [health, setHealth] = useState<{ value: number }>({ value: 100 });
   const [shelter, setShelter] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [speech, setSpeech] = useState<{ speaker: string; text: string; key: number } | null>(null);
@@ -52,7 +55,7 @@ export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps)
   }, [area]);
   useGameEvent('ui:player-state', ({ state: s }) => setState(s));
   useGameEvent('ui:pointer-lock', ({ locked: l }) => setLocked(l));
-  useGameEvent('ui:exposure', (e) => setExposure((q) => (q.value === e.value && q.level === e.level ? q : { value: e.value, level: e.level })));
+  useGameEvent('ui:health', (h) => setHealth((q) => (q.value === h.value ? q : { value: h.value })));
   useGameEvent('ui:shelter', ({ inside, family }) => setShelter(inside ? family : null));
   useGameEvent('ui:at-temple', ({ inside }) => setAtTemple(inside));
   useGameEvent('ui:toast', ({ text, tone }) => {
@@ -80,12 +83,20 @@ export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps)
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 select-none">
-      {/* The moon on your skin: the screen's edges go cold as exposure climbs. */}
+      {/*
+        The moon on your skin: the screen's edges go cold as it takes your strength.
+
+        This follows health rather than exposure. Exposure fills in about fifteen seconds and then
+        sits at the top for as long as you stay out, which would hold the overlay at full strength
+        for most of a bad minute; health falls the whole way down and comes back behind a door, so
+        the picture always has somewhere to go. It is a vignette and nothing else — the middle of
+        the screen stays completely clear at every value.
+      */}
       <div
-        className="absolute inset-0 transition-opacity duration-700"
+        className="pointer-events-none absolute inset-0 transition-opacity duration-700"
         style={{
-          opacity: Math.min(exposure.value / 70, 1) * (exposure.level === 'danger' ? 1 : 0.8),
-          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 42%, rgba(90,120,210,0.22) 74%, rgba(35,55,130,0.6) 100%)',
+          opacity: (1 - health.value / 100) * 0.8,
+          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 46%, rgba(90,120,210,0.2) 76%, rgba(35,55,130,0.55) 100%)',
         }}
       />
 
@@ -107,6 +118,9 @@ export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps)
             );
           })}
         </ul>
+        <div className="mt-3 w-full">
+          <HealthBar />
+        </div>
       </div>
 
       {/* Top centre: the sky, and SAFE when you are out of it. On a narrow screen it sits below
@@ -122,6 +136,11 @@ export function Hud({ device, snapshot, icons, onOpenBag, cinematic }: HudProps)
             <span className="text-lamp-200/80">Inside {shelter}</span>
           </div>
         )}
+      </div>
+
+      {/* Under the pause button: the corner map, north up. Press it (or M) for the whole village. */}
+      <div className="safe-top pointer-events-none absolute right-3 top-[4.25rem]">
+        <Minimap onOpen={onOpenMap} />
       </div>
 
       {area && (

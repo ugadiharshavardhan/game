@@ -250,8 +250,14 @@ export class ThirdPersonCamera {
   // ---- shots -----------------------------------------------------------------------------------
 
   private applyShot(dt: number): void {
+    // Move toward the target and stop on it. Choosing "up" or "down" by comparing against the
+    // target with a strict `>` sent a weight already sitting at its target down a step, then back
+    // up the next frame: at full weight the shot flickered between 100% and about 95%, blending
+    // the camera a few centimetres toward the follow rig on alternate frames — a shake in every
+    // interior, for as long as the player stood in it.
     const step = dt / this.shotBlendTime;
-    this.shotWeight = this.shotTarget > this.shotWeight ? Math.min(this.shotWeight + step, 1) : Math.max(this.shotWeight - step, 0);
+    const gap = this.shotTarget - this.shotWeight;
+    this.shotWeight += Math.max(-step, Math.min(step, gap));
     if (this.shotWeight <= 0) {
       if (this.shotTarget === 0) this.shot = null;
       return;

@@ -21,11 +21,11 @@ import { AnimationClip, type Bone, type Object3D, Quaternion, QuaternionKeyframe
 const DEG = Math.PI / 180;
 const AXES = { x: new Vector3(1, 0, 0), y: new Vector3(0, 1, 0), z: new Vector3(0, 0, 1) };
 
-type Axis = keyof typeof AXES;
+export type Axis = keyof typeof AXES;
 /** [bone (without the mixamorig prefix), axis, degrees]. */
-type Turn = [string, Axis, number];
+export type Turn = [string, Axis, number];
 
-interface Pose {
+export interface Pose {
   turns: Turn[];
   /** Extra hip offset in the character's frame, metres (added after the legs are solved). */
   hips?: { x?: number; y?: number; z?: number };
@@ -56,7 +56,7 @@ const bump = (p: number, c: number, w: number) => {
 
 // ---- the rig ------------------------------------------------------------------------------------
 
-class Rig {
+export class Rig {
   readonly bones = new Map<string, Bone>();
   private readonly rest = new Map<string, Quaternion>();
   private readonly restHips: Vector3;
@@ -211,14 +211,14 @@ class Rig {
 // ---- the poses ----------------------------------------------------------------------------------
 
 /** Arms hanging naturally from the A-pose, elbows soft. */
-const armsDown = (extraZ = 0, elbow = -12): Turn[] => [
+export const armsDown = (extraZ = 0, elbow = -12): Turn[] => [
   ['LeftArm', 'z', -40 - extraZ],
   ['RightArm', 'z', 40 + extraZ],
   ['LeftForeArm', 'x', elbow],
   ['RightForeArm', 'x', elbow],
 ];
 
-interface Gait {
+export interface Gait {
   /** Thigh forward and back at the extremes (degrees). */
   thighFwd: number;
   thighBack: number;
@@ -240,7 +240,7 @@ interface Gait {
   stance: number;
 }
 
-const GAITS = {
+export const GAITS = {
   slow: { thighFwd: 22, thighBack: 16, kneeLoad: 8, kneeSwing: 45, swingAt: 0.74, armSwing: 10, elbow: -12, elbowPump: 6, lean: 2, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
   walk: { thighFwd: 30, thighBack: 20, kneeLoad: 12, kneeSwing: 58, swingAt: 0.73, armSwing: 20, elbow: -16, elbowPump: 12, lean: 4, pelvisYaw: 6, sway: 0.025, flight: 0, stance: 0.6 },
   run: { thighFwd: 52, thighBack: 24, kneeLoad: 32, kneeSwing: 105, swingAt: 0.68, armSwing: 26, elbow: -72, elbowPump: 8, lean: 11, pelvisYaw: 9, sway: 0.015, flight: 0.05, stance: 0.38 },
@@ -265,7 +265,7 @@ function leg(side: 'Left' | 'Right', p: number, g: Gait, base: { thigh: number; 
   ];
 }
 
-function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
+export function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
   const c = Math.cos(TAU * phase);
   const s = Math.sin(TAU * phase);
   const crouchLegs = { thigh: -62 * crouch, knee: 95 * crouch };
@@ -296,7 +296,7 @@ function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
   };
 }
 
-function idlePose(t: number, crouch: number): Pose {
+export function idlePose(t: number, crouch: number): Pose {
   const breath = Math.sin((TAU * t) / 3.5);
   const shift = Math.sin((TAU * t) / 7);
   // A second, slower sway over the same seven seconds: standing still is never quite still, and
@@ -327,7 +327,7 @@ function idlePose(t: number, crouch: number): Pose {
 }
 
 /** Blends two poses turn by turn (same bones and axes, in order). */
-function mix(a: Pose, b: Pose, t: number): Pose {
+export function mix(a: Pose, b: Pose, t: number): Pose {
   const k = smooth(t);
   const keyed = new Map<string, number>();
   for (const [bn, ax, d] of a.turns) keyed.set(`${bn}:${ax}`, (keyed.get(`${bn}:${ax}`) ?? 0) + d * (1 - k));
@@ -345,7 +345,7 @@ function mix(a: Pose, b: Pose, t: number): Pose {
 }
 
 /** A one-shot as key poses at times; smooth in between. */
-function keyed(keys: [number, Pose][]): (t: number) => Pose {
+export function keyed(keys: [number, Pose][]): (t: number) => Pose {
   return (t) => {
     let i = 0;
     while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
@@ -355,7 +355,7 @@ function keyed(keys: [number, Pose][]): (t: number) => Pose {
   };
 }
 
-const STAND: Pose = idlePose(0, 0);
+export const STAND: Pose = idlePose(0, 0);
 
 /** Bending down to lift something from the ground with the right hand. */
 const REACH_DOWN: Pose = {
@@ -395,12 +395,149 @@ const PUSH: Pose = {
 };
 
 /** Namaste: palms together before the chest. */
-const NAMASTE: Pose = {
+export const NAMASTE: Pose = {
   turns: [['Spine', 'x', 4], ['Head', 'x', 4], ...armsDown(-24, 0), ['LeftArm', 'x', -30], ['RightArm', 'x', -30], ['LeftArm', 'y', 28], ['RightArm', 'y', -28], ['LeftForeArm', 'x', -112], ['RightForeArm', 'x', -112], ['LeftForeArm', 'y', -30], ['RightForeArm', 'y', 30]],
 };
 
+/** The turns of a namaste, from five numbers: how far the arms swing in, forward, and round; the forearms' fold and cross. */
+const namasteTurns = (p: readonly number[]): Turn[] => [
+  ['Spine', 'x', 4],
+  ['Head', 'x', 4],
+  ...armsDown(0, 0),
+  ['LeftArm', 'z', -40 + p[0]],
+  ['RightArm', 'z', 40 - p[0]],
+  ['LeftArm', 'x', p[1]],
+  ['RightArm', 'x', p[1]],
+  ['LeftArm', 'y', p[2]],
+  ['RightArm', 'y', -p[2]],
+  ['LeftForeArm', 'x', p[3]],
+  ['RightForeArm', 'x', p[3]],
+  ['LeftForeArm', 'y', p[4]],
+  ['RightForeArm', 'y', -p[4]],
+];
+
+/**
+ * A namaste whose palms actually meet, for THIS skeleton.
+ *
+ * The fixed NAMASTE below was written for one set of proportions and, on the character as built,
+ * left the hands 0.8 m apart with the arms spread. Arm length and shoulder width differ from
+ * person to person, and a pose made of angles cannot be right for all of them — so the angles are
+ * searched for, once, when the clips are built: the five numbers that put both palms together, at
+ * the chest, a hand's breadth in front of it. It takes a few hundred trial poses and a few
+ * milliseconds.
+ */
+export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pose } {
+  const head = rig.bones.get('Head');
+  const l = rig.bones.get('LeftHand');
+  const r = rig.bones.get('RightHand');
+  if (!head || !l || !r) return { namaste: NAMASTE, bow: BOW };
+  model.updateMatrixWorld(true);
+  const inFrame = (b: Object3D) => model.worldToLocal(b.getWorldPosition(new Vector3()));
+  rig.reset();
+  model.updateMatrixWorld(true);
+  const height = inFrame(head).y;
+
+  /** The five arm numbers that put both palms at `target`, given whatever the torso is already doing. */
+  const solve = (extra: Turn[], target: Vector3, start: number[]): number[] => {
+    const cost = (p: number[]) => {
+      rig.apply({ turns: [...namasteTurns(p), ...extra] });
+      model.updateMatrixWorld(true);
+      const a = inFrame(l);
+      const b = inFrame(r);
+      return Math.hypot(a.x - 0.02, a.y - target.y, a.z - target.z) + Math.hypot(b.x + 0.02, b.y - target.y, b.z - target.z);
+    };
+    let p = start;
+    let best = cost(p);
+    for (const step of [20, 10, 5, 2, 1]) {
+      for (let round = 0; round < 40; round++) {
+        let improved = false;
+        for (let i = 0; i < p.length; i++) {
+          for (const d of [step, -step]) {
+            const q = [...p];
+            q[i] += d;
+            const c = cost(q);
+            if (c < best - 1e-5) {
+              best = c;
+              p = q;
+              improved = true;
+            }
+          }
+        }
+        if (!improved) break;
+      }
+    }
+    return p;
+  };
+
+  const upright = solve([], new Vector3(0, height * 0.8, 0.24), [24, 10, 55, -100, -50]);
+  // Bowing bends the spine, and arm angles that put the palms together upright swing them across
+  // each other once the torso leans — so the bow is fitted on its own, palms together, lower and
+  // further forward, with the lean already in.
+  const lean: Turn[] = [['Spine', 'x', 22], ['Spine1', 'x', 8], ['Head', 'x', 24]];
+  const bowed = solve(lean, new Vector3(0, height * 0.72, 0.36), upright);
+  rig.reset();
+  model.updateMatrixWorld(true);
+  return { namaste: { turns: namasteTurns(upright) }, bow: { turns: [...namasteTurns(bowed), ...lean] } };
+}
+
 /** …and a bow over them. */
-const BOW: Pose = { ...NAMASTE, turns: [...NAMASTE.turns, ['Spine', 'x', 22], ['Spine1', 'x', 8], ['Head', 'x', 24]] };
+export const BOW: Pose = { ...NAMASTE, turns: [...NAMASTE.turns, ['Spine', 'x', 22], ['Spine1', 'x', 8], ['Head', 'x', 24]] };
+
+/** Palms together at the chest, on the knees: the moment before the bow. Ankles are planted, so the
+ *  hips settle to wherever the folded legs put them. */
+const KNEEL: Pose = {
+  turns: [
+    ['Spine', 'x', 2],
+    ['Head', 'x', 8],
+    ...armsDown(-24, 0),
+    ['LeftArm', 'x', -30],
+    ['RightArm', 'x', -30],
+    ['LeftArm', 'y', 28],
+    ['RightArm', 'y', -28],
+    ['LeftForeArm', 'x', -112],
+    ['RightForeArm', 'x', -112],
+    ['LeftForeArm', 'y', -30],
+    ['RightForeArm', 'y', 30],
+    // Thighs upright, shins folded back along the floor, the feet laid flat behind.
+    ['LeftUpLeg', 'x', -4],
+    ['RightUpLeg', 'x', -4],
+    ['LeftLeg', 'x', 100],
+    ['RightLeg', 'x', 100],
+    ['LeftFoot', 'x', 46],
+    ['RightFoot', 'x', 46],
+  ],
+};
+
+/**
+ * The pranam itself: sat back on the heels and folded forward, forehead toward the ground and the
+ * joined hands stretched out in front of it — the way a devotee bows to Bappa. The hips go back a
+ * little so the bow ends before the altar, not on it.
+ */
+const PRANAM: Pose = {
+  turns: [
+    ['Spine', 'x', 42],
+    ['Spine1', 'x', 26],
+    ['Spine2', 'x', 12],
+    ['Neck', 'x', 8],
+    ['Head', 'x', 22],
+    ...armsDown(-24, 0),
+    ['LeftArm', 'x', -96],
+    ['RightArm', 'x', -96],
+    ['LeftArm', 'y', 24],
+    ['RightArm', 'y', -24],
+    ['LeftForeArm', 'x', -6],
+    ['RightForeArm', 'x', -6],
+    ['LeftHand', 'y', -12],
+    ['RightHand', 'y', 12],
+    ['LeftUpLeg', 'x', -84],
+    ['RightUpLeg', 'x', -84],
+    ['LeftLeg', 'x', 150],
+    ['RightLeg', 'x', 150],
+    ['LeftFoot', 'x', 40],
+    ['RightFoot', 'x', 40],
+  ],
+  hips: { z: -0.2 },
+};
 
 /**
  * Off the ground: the trailing leg tucked, the leading one reaching, arms out for balance.
@@ -506,7 +643,13 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
 
   clips.push(rig.clip('Pickup', 1.4, fps, keyed([[0, STAND], [0.55, REACH_DOWN], [0.8, REACH_DOWN], [1.15, HOLD], [1.4, STAND]])));
   clips.push(rig.clip('Interact', 1.0, fps, keyed([[0, STAND], [0.38, REACH_OUT], [0.62, REACH_OUT], [1.0, STAND]])));
-  clips.push(rig.clip('Celebrate', 2.2, fps, keyed([[0, STAND], [0.5, NAMASTE], [0.9, BOW], [1.35, BOW], [1.75, NAMASTE], [2.2, STAND]])));
+  const { namaste, bow } = fitNamaste(rig, model);
+  clips.push(rig.clip('Celebrate', 2.2, fps, keyed([[0, STAND], [0.5, namaste], [0.9, bow], [1.35, bow], [1.75, namaste], [2.2, STAND]])));
+  // Offering and praying at the temple: a namaste, down onto the knees, the full bow, and back up.
+  // The gameplay effect lands at the clip's midpoint, which is the deepest part of the bow.
+  clips.push(
+    rig.clip('Pranam', 4.6, fps, keyed([[0, STAND], [0.4, namaste], [1.2, KNEEL], [1.9, PRANAM], [2.7, PRANAM], [3.4, KNEEL], [4.1, namaste], [4.6, STAND]])),
+  );
   clips.push(rig.clip('EnterHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));
   clips.push(rig.clip('ExitHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));
   // Held while the feet are off the ground, and looped: the blend weight, not the clip, says how

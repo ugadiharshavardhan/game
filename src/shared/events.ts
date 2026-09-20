@@ -13,7 +13,8 @@
  */
 
 import type { InventorySnapshot, ItemId } from './items';
-import type { ExposureLevel, GameSettings, MoonStateName, NightPhase, PlayerStateName, RunResult } from './types';
+import type { MapPlayer, MapSpot } from './map';
+import type { ExposureLevel, GameSettings, HealthLevel, MoonStateName, NightPhase, PlayerStateName, RunResult } from './types';
 
 /** What the interaction prompt shows. Plain text only — React decides how it looks per device. */
 export interface PromptInfo {
@@ -78,6 +79,11 @@ export interface GameEventMap {
   'ui:night': { label: string; t: number; phase: NightPhase; minutesLeft: number };
   /** Exposure 0..100 and what to make of it. */
   'ui:exposure': { value: number; level: ExposureLevel; rising: boolean };
+  /**
+   * Health 0..100: what the moonlight has cost. It falls only out of doors under the moon and
+   * rises only behind a door, so the bar is also the instruction.
+   */
+  'ui:health': { value: number; level: HealthLevel; draining: boolean };
   /** The player is standing in the temple: show what the puja still wants. */
   'ui:at-temple': { inside: boolean };
   /** A cinematic is playing (the puja): the HUD stands back. */
@@ -88,6 +94,10 @@ export interface GameEventMap {
   'ui:shelter': { inside: boolean; family: string | null };
   /** Frame rate and draw calls, twice a second, when the page was opened with ?perf=1. */
   'ui:perf': { fps: number; calls: number; triangles: number; quality: string; memoryMb: number | null };
+  /** Where the player is and which way they face, ten times a second, for the map. */
+  'ui:map-player': MapPlayer;
+  /** The offerings the player knows about — hinted or found — whenever that changes. */
+  'ui:map-spots': { spots: MapSpot[] };
   /** The short guided walk: what to do now, or null when it is over. */
   'ui:tutorial': { step: number; total: number; title: string; hint: string; done?: boolean } | null;
 
@@ -103,6 +113,8 @@ export interface GameEventMap {
   'game:skip-tutorial': undefined;
   /** The bag is open: movement input is ignored so arrows and the stick can browse it. */
   'game:inventory-open': { open: boolean };
+  /** The map is open: movement input is ignored and the action button waits, like the bag. */
+  'game:map-open': { open: boolean };
   /** On-screen buttons for touch devices (and the bag's open/close key). */
   'input:action': { action: 'interact' | 'crouch' | 'inventory' };
   /** Skip the puja cinematic. */

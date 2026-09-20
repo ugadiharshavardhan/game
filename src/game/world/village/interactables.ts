@@ -4,18 +4,15 @@
  *   TempleAltar       offer what the puja still needs; pray when there's nothing to offer
  *   LockedDoor        the families at the pandal: knock, and nobody answers
  *   VillagerTalk      people preparing for the festival, with a word of advice
- *   DroppedOfferings  what fell when the moon overwhelmed you — still yours to pick up
  *
  * Rules only — meshes are handed in by whichever renderer drew them.
  */
-import type { Collider } from '@dimforge/rapier3d-compat';
 import { MathUtils, type Object3D, Vector3 } from 'three';
 import { EventBus } from '../../../shared/EventBus';
-import { describeStacks, type InventoryStack, stillNeeded } from '../../../shared/items';
+import { describeStacks, stillNeeded } from '../../../shared/items';
 import type { SoundKey } from '../../audio/SoundFx';
 import type { IInteractable, PromptText } from '../../interaction/IInteractable';
 import type { InventorySystem } from '../../inventory/InventorySystem';
-import type { PujaItemVisual } from '../../items/PujaItem';
 import { PlayerAction } from '../../player/PlayerAnimation';
 import type { DoorPoint } from './solids';
 import type { VillagerDef } from './types';
@@ -63,7 +60,7 @@ export class TempleAltar implements IInteractable {
   }
 
   action(): PlayerAction {
-    return PlayerAction.Celebrate;
+    return PlayerAction.Pranam;
   }
 
   sound(): SoundKey {
@@ -176,78 +173,5 @@ export class VillagerTalk implements IInteractable {
   interact(): void {
     EventBus.emit('ui:speech', { speaker: this.name, text: this.lines[this.next % this.lines.length] });
     this.next++;
-  }
-}
-
-let dropCount = 0;
-
-/**
- * Offerings that fell when the moon overwhelmed the player. They stay exactly where they fell
- * until picked up again — nothing is ever lost, only time.
- */
-export class DroppedOfferings implements IInteractable {
-  readonly id = `dropped:${++dropCount}`;
-  readonly kind = 'item' as const;
-  readonly position: Vector3;
-  readonly promptAnchor: Vector3;
-  readonly interactRadius = 1.7;
-  readonly priority = 2.5;
-  readonly ownColliders: readonly Collider[] = [];
-  readonly stacks: InventoryStack[];
-  visual: PujaItemVisual | null = null;
-  private time = 0;
-  private readonly total: number;
-  private readonly inventory: InventorySystem;
-  private readonly onEmpty: (d: DroppedOfferings) => void;
-
-  constructor(at: Vector3, stacks: InventoryStack[], inventory: InventorySystem, onEmpty: (d: DroppedOfferings) => void) {
-    this.position = at.clone();
-    this.promptAnchor = at.clone().setY(at.y + 0.6);
-    this.stacks = stacks.map((s) => ({ ...s }));
-    this.total = stacks.reduce((n, s) => n + s.quantity, 0);
-    this.inventory = inventory;
-    this.onEmpty = onEmpty;
-  }
-
-  private get left(): number {
-    return this.stacks.reduce((n, s) => n + s.quantity, 0);
-  }
-
-  isAvailable(): boolean {
-    return this.left > 0;
-  }
-
-  prompt(): PromptText {
-    const base = { verb: 'Collect', mobileVerb: 'COLLECT', detail: `Your dropped offerings (${this.left})` };
-    const takeable = this.stacks.some((s) => s.quantity > 0 && this.inventory.acceptable(s.id, s.quantity) > 0);
-    if (takeable) return { ...base, enabled: true };
-    return { ...base, enabled: false, note: this.inventory.free <= 0 ? 'Your bag is full — offer at the temple first' : 'The puja has enough of these' };
-  }
-
-  action(): PlayerAction {
-    return PlayerAction.Pickup;
-  }
-
-  sound(): readonly SoundKey[] {
-    return ['collect', 'rustle'];
-  }
-
-  interact(): void {
-    for (const s of this.stacks) {
-      const taken = this.inventory.add(s.id, s.quantity);
-      s.quantity -= taken;
-      if (taken > 0) EventBus.emit('ui:pickup', { id: s.id, quantity: taken, leftBehind: s.quantity });
-    }
-    this.visual?.setRemaining(this.left, this.total);
-    if (this.left === 0) this.onEmpty(this);
-  }
-
-  setHighlight(approach: number, focused: boolean): void {
-    this.visual?.setHighlight(approach, focused);
-  }
-
-  update(dt: number): void {
-    this.time += dt;
-    this.visual?.update(dt, this.time);
   }
 }
