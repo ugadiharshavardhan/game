@@ -13,7 +13,7 @@
  */
 
 import type { InventorySnapshot, ItemId } from './items';
-import type { MoonPhase, PlayerStateName, RunResult } from './types';
+import type { ExposureLevel, MoonStateName, PlayerStateName, RunResult } from './types';
 
 /** What the interaction prompt shows. Plain text only — React decides how it looks per device. */
 export interface PromptInfo {
@@ -69,14 +69,18 @@ export interface GameEventMap {
   'ui:speech': { speaker: string; text: string };
   /** A short message: "The bag is full", "You dropped 3 offerings". */
   'ui:toast': { text: string; tone: 'info' | 'warn' | 'good' };
-  /** The moon's phase changed, or progressed (sent a few times a second). */
-  'ui:moon': { phase: MoonPhase; progress: number; dangerous: boolean };
-  /** Purity, 0..100, and whether the moon is draining it right now. */
-  'ui:purity': { value: number; exposed: boolean };
+  /** The moon's state, a few times a second: the sky in words, never a countdown. */
+  'ui:moon': { state: MoonStateName; label: string; note?: string; progress: number; dangerous: boolean };
+  /** Exposure 0..100 and what to make of it. */
+  'ui:exposure': { value: number; level: ExposureLevel; rising: boolean };
+  /** The player is standing in the temple: show what the puja still wants. */
+  'ui:at-temple': { inside: boolean };
+  /** A cinematic is playing (the puja): the HUD stands back. */
+  'ui:cinematic': { active: boolean };
+  /** Where the touch joystick is and how far it's pushed, in screen pixels. */
+  'ui:touch-stick': { active: boolean; originX: number; originY: number; dx: number; dy: number };
   /** The player went indoors (safe) or came back out. */
   'ui:shelter': { inside: boolean; family: string | null };
-  /** Every offering has been placed before Bappa. */
-  'ui:puja-complete': undefined;
 
   // ---- React -> engine -------------------------------------------------
   /** Pause is React-owned; the engine only obeys. */
@@ -88,6 +92,8 @@ export interface GameEventMap {
   'game:inventory-open': { open: boolean };
   /** On-screen buttons for touch devices (and the bag's open/close key). */
   'input:action': { action: 'interact' | 'crouch' | 'inventory' };
+  /** Skip the puja cinematic. */
+  'game:skip-cinematic': undefined;
 }
 
 export type GameEventName = keyof GameEventMap;

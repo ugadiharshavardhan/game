@@ -403,6 +403,41 @@ const BOW: Pose = { ...NAMASTE, turns: [...NAMASTE.turns, ['Spine', 'x', 22], ['
  * Builds every clip PlayerAnimation asks for. Locomotion clips carry `userData.groundSpeed` (m/s);
  * cycle lengths are chosen so each gait's natural speed sits near the controller's.
  */
+/**
+ * Poses a model and leaves it posed, for whoever wants to bake the result — the walking villagers
+ * are six baked phases of a walk, swapped in turn. One Poser per model: it remembers the rest pose
+ * it was built with, and every pose is applied from there rather than on top of the last one.
+ */
+export class Poser {
+  private readonly rig: Rig;
+  private readonly model: Object3D;
+
+  constructor(model: Object3D) {
+    this.model = model;
+    this.rig = new Rig(model);
+  }
+
+  get ok(): boolean {
+    return this.rig.ok;
+  }
+
+  /** Standing at rest. */
+  stand(): void {
+    this.set(STAND);
+  }
+
+  /** One phase (0..1) of a gait's cycle. */
+  gait(kind: 'slow' | 'walk' | 'run', phase: number): void {
+    this.set(gaitPose(GAITS[kind], phase));
+  }
+
+  private set(p: Pose): void {
+    if (!this.rig.ok) return;
+    this.rig.apply(p);
+    this.model.updateMatrixWorld(true);
+  }
+}
+
 export function buildProceduralClips(model: Object3D, speeds: { slow: number; walk: number; run: number; crouch: number }): AnimationClip[] {
   const rig = new Rig(model);
   if (!rig.ok) return [];

@@ -30,8 +30,8 @@ export interface ArtContext extends VisualsContext {
   culler: Culler;
   /** The terrain (null when built with ?only= without 'ground'): heights and surface weights. */
   ground: Ground | null;
-  /** Live state shared with modules: glow after an offering, and how much moonlight is falling. */
-  shared: { templeGlow: number; moonlight: number };
+  /** Live state shared with modules: the temple's glow, the sky, and where the player is. */
+  shared: { templeGlow: number; moonlight: number; goingHome: boolean; dangerous: boolean; noise: number; player: Vector3 };
   /** Per-frame hooks (swaying cloth, flickering signs). */
   tick: Array<(dt: number, time: number, camera: Vector3) => void>;
 }
@@ -102,14 +102,15 @@ export class FlameField {
     this.haloColours = h.attr;
   }
 
-  update(time: number): void {
+  /** `boost` lifts every flame as the sky goes down: the warm half of the night's contrast. */
+  update(time: number, boost = 1): void {
     if (!this.colours || !this.haloColours) return;
     const c = this.colours.array as Float32Array;
     const hc = this.haloColours.array as Float32Array;
     for (let i = 0; i < this.count; i++) {
       const s = this.seeds[i];
       const f = 0.82 + 0.12 * Math.sin(time * 11 + s) + 0.07 * Math.sin(time * 23.7 + s * 3.1);
-      const k = f * this.flameSize[i];
+      const k = f * this.flameSize[i] * boost;
       c[i * 3] = 2.2 * k;
       c[i * 3 + 1] = 1.55 * k;
       c[i * 3 + 2] = 0.85 * k;

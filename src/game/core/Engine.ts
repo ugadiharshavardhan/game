@@ -17,6 +17,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { EventBus } from '../../shared/EventBus';
+import { Ambience } from '../audio/Ambience';
 import { SoundFx } from '../audio/SoundFx';
 import { DEFAULT_CAMERA_CONFIG, validateCameraConfig } from '../camera/CameraConfig';
 import { type CameraUserSettings, ThirdPersonCamera } from '../camera/ThirdPersonCamera';
@@ -30,6 +31,9 @@ import { Input } from './Input';
 import { Physics } from './Physics';
 
 const BASE = import.meta.env.BASE_URL;
+/** Bloom strength: restrained by day, a touch more once the only light is fire and moon. */
+const DAY_BLOOM = 0.2;
+const NIGHT_BLOOM = 0.32;
 
 /**
  * Owns the renderer, the loop and every system. Created on Play, disposed on quit.
@@ -45,6 +49,8 @@ export class Engine {
   private readonly input: Input;
   private readonly bank = new AudioBank();
   private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private ambience: Ambience | null = null;
   private physics: Physics | null = null;
   private world: World | null = null;
   private player: Player | null = null;
@@ -95,8 +101,9 @@ export class Engine {
     const params = new URLSearchParams(location.search);
     const physics = this.physics;
     const sounds = new SoundFx(this.bank);
+    this.ambience = new Ambience(this.bank);
     const seed = Number(params.get('seed')) || Date.now() % 100000;
-    const gameplay = (this.gameplay = new Gameplay(physics, sounds, seed));
+    const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed));
     const buildWorld = async (): Promise<World> => {
       if (params.get('scene') === 'testbed') return buildTestbed(this.scene, this.renderer, physics);
       const { buildVillage } = await import('../world/village/Village');
@@ -139,7 +146,8 @@ export class Engine {
     );
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     // High threshold: lamps, flames and the sun's disc bloom; lit walls and sky do not.
-    this.composer.addPass(new UnrealBloomPass(size, 0.2, 0.55, 1.45));
+    this.bloom = new UnrealBloomPass(size, DAY_BLOOM, 0.55, 1.45);
+    this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.resize();
 
@@ -176,6 +184,7 @@ export class Engine {
     this.world?.dispose();
     this.physics?.dispose();
     this.composer?.dispose();
+    this.ambience?.dispose();
     this.bank.dispose();
     this.timer.dispose();
     this.renderer.dispose();
@@ -200,7 +209,10 @@ export class Engine {
       this.physics.step(dt);
       this.cameraRig.update(dt);
       this.world?.follow(this.player.feet);
-      this.world?.update?.(dt, this.player.feet, { camera: this.camera, moonlight: this.gameplay.moonlight });
+      const moon = this.gameplay.moonFrame();
+      this.world?.update?.(dt, this.player.feet, { camera: this.camera, moon, noise: this.gameplay.noise() });
+      // A little more glow off the diyas once the sky is dark — a little, not a haze.
+      if (this.bloom) this.bloom.strength = DAY_BLOOM + (NIGHT_BLOOM - DAY_BLOOM) * moon.moonlight;
       this.input.endFrame();
     }
     this.composer.render();

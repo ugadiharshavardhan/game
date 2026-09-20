@@ -44,6 +44,7 @@ export class TriggerSystem {
       if (h === this.colliders.templeTrigger.handle) temple = true;
     }
     this.houseId = house;
+    if (temple !== this.inTemple) EventBus.emit('ui:at-temple', { inside: temple });
     this.inTemple = temple;
     if (area?.id !== this.area?.id) {
       this.area = area;

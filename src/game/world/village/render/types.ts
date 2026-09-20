@@ -1,6 +1,8 @@
 import type { Camera, Object3D, Scene, Vector3, WebGLRenderer } from 'three';
+import type { SoundKey } from '../../../audio/SoundFx';
 import type { ItemId } from '../../../../shared/items';
 import type { PujaItemVisual } from '../../../items/PujaItem';
+import type { PujaCeremony } from './art/temple.puja';
 import type { Environment } from '../../environment';
 import type { Level } from '../solids';
 import type { VillageLayout } from '../types';
@@ -11,6 +13,8 @@ export interface VisualsContext {
   layout: VillageLayout;
   level: Level;
   env: Environment;
+  /** The world's own sounds (a dog barking down the lane). */
+  sound?: (key: SoundKey, volume?: number) => void;
   onProgress?: (p: number) => void;
 }
 
@@ -21,6 +25,13 @@ export interface FrameInfo {
   templeGlow: number;
   /** 0..1 — how much moonlight is falling. */
   moonlight: number;
+  /** The signs are showing: villagers and dogs head home. */
+  goingHome: boolean;
+  /** The moon is out: nobody is in the lanes. */
+  dangerous: boolean;
+  /** Where the player is, and how loudly they are moving (0 … 1). */
+  player: Vector3;
+  noise: number;
 }
 
 /** A dropped-offerings bundle's look; removed with `dispose`. */
@@ -38,6 +49,8 @@ export interface VillageVisuals {
   makeDropVisual(at: Vector3): DropVisual;
   /** Rendered icons for the bag, if this renderer makes them. */
   itemIcons?: Promise<Partial<Record<ItemId, string>>>;
+  /** The closing puja's petals, sparks and lamps, when this renderer has them. */
+  puja?: PujaCeremony;
   update(dt: number, frame: FrameInfo): void;
   dispose(): void;
 }

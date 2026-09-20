@@ -5,7 +5,7 @@
  * the greybox (structures only), so the village is always complete and always walkable. During
  * development `?only=ground,houses` builds just those modules, for fast iteration.
  */
-import { Group, Vector3 } from 'three';
+import { Group, type MeshStandardMaterial, Vector3 } from 'three';
 import type { Solid } from '../../solids';
 import { buildGreybox } from '../greybox';
 import type { VillageVisuals, VisualsContext } from '../types';
@@ -14,6 +14,7 @@ import { buildHouses } from './houses';
 import { buildPujaItems } from './pujaItems';
 import { MaterialKit, PBR_SETS } from './materials';
 import { type ArtContext, type ArtModule, Culler, FlameField, LampPool } from './runtime';
+import { buildCeremony } from './temple.puja';
 import { TextureBank } from './textures';
 
 /**
@@ -27,6 +28,7 @@ const MODULES: Record<string, () => Promise<{ build: ArtModule }>> = {
   props: () => import('./props'),
   festival: () => import('./festival'),
   npcs: () => import('./npcs'),
+  life: () => import('./life'),
 };
 
 const landmarkKind = (s: Solid) => s.tag.split(':')[1];
@@ -69,7 +71,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     lamps: new LampPool(root, 6),
     culler: new Culler(),
     ground: null,
-    shared: { templeGlow: 0, moonlight: 0 },
+    shared: { templeGlow: 0, moonlight: 0, goingHome: false, dangerous: false, noise: 0, player: new Vector3() },
     tick: [],
   };
 
@@ -104,9 +106,14 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
   a.flames.build(root);
   ctx.onProgress?.(1);
 
+  const puja = buildCeremony(a);
   const camPos = new Vector3();
+  // The two materials every lit window and doorway shares: brightened as evening turns to night.
+  const lamplit = kit.get('lamplit') as MeshStandardMaterial;
+  const interior = kit.get('interior') as MeshStandardMaterial;
   return {
     doorHinges,
+    puja,
     itemVisuals: items.visuals,
     makeDropVisual: items.makeDropVisual,
     itemIcons: items.icons,
@@ -114,14 +121,24 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
       frame.camera.getWorldPosition(camPos);
       a.shared.templeGlow = frame.templeGlow;
       a.shared.moonlight = frame.moonlight;
+      a.shared.goingHome = frame.goingHome;
+      a.shared.dangerous = frame.dangerous;
+      a.shared.noise = frame.noise;
+      a.shared.player.copy(frame.player);
       const flicker = 0.9 + 0.07 * Math.sin(frame.time * 9.3) + 0.04 * Math.sin(frame.time * 23.1);
-      a.flames.update(frame.time);
-      a.lamps.update(dt, camPos, flicker);
+      // As the sky cools, the village's own fire comes up to meet it: diyas, lamps and lit
+      // windows carry the warm half of the night's contrast (MoonLightingController has the cool).
+      const warmth = 1 + 0.45 * frame.moonlight;
+      a.flames.update(frame.time, 1 + 0.3 * frame.moonlight);
+      a.lamps.update(dt, camPos, flicker * warmth);
+      lamplit.emissiveIntensity = 1.6 * warmth;
+      interior.emissiveIntensity = 0.6 * (1 + 0.8 * frame.moonlight);
       a.culler.update(dt, camPos);
       for (const t of a.tick) t(dt, frame.time, camPos);
       fallback.update(dt, frame);
     },
     dispose() {
+      puja.dispose();
       fallback.dispose();
       for (const d of disposables) d.dispose();
       a.flames.dispose();

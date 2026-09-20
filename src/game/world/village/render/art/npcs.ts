@@ -51,10 +51,16 @@ const OUTFITS = [
 /** Meshes left off the villagers. */
 const SKIP = /Jhola|Lashes/;
 
+/** The character model, loaded once and shared by the statues and the walking villagers. */
+let devotee: Promise<Object3D> | null = null;
+export function loadDevotee(): Promise<Object3D> {
+  devotee ??= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/devotee.glb`).then((g) => g.scene);
+  return devotee;
+}
+
 export async function build(a: ArtContext): Promise<boolean> {
   if (!a.layout.villagers.length) return true;
-  const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/devotee.glb`);
-  const source = gltf.scene;
+  const source = await loadDevotee();
   const outfitMats = new Map<number, Map<Material, Material>>();
 
   for (const v of a.layout.villagers) {
@@ -183,7 +189,7 @@ function pose(model: Object3D, p: VillagerPose): void {
 // ---- baking --------------------------------------------------------------------------------------
 
 /** Applies skinning once and returns static meshes (one per material) in the model's space. */
-function bake(model: Object3D, material: (m: Material) => Material): Group {
+export function bake(model: Object3D, material: (m: Material) => Material): Group {
   const byMat = new Map<Material, BufferGeometry[]>();
   const pos = new Vector3();
   const nor = new Vector3();
@@ -279,7 +285,7 @@ function settle(group: Group, v: VillagerDef): void {
 }
 
 /** Salt-and-pepper hair for the village elders. */
-function greyHair(a: ArtContext, m: Material): Material {
+export function greyHair(a: ArtContext, m: Material): Material {
   return a.kit.custom(`npcs:grey-${m.name}`, () => {
     const c = (m as MeshStandardMaterial).clone();
     c.color.set('#c9c3b8');
@@ -291,7 +297,7 @@ function greyHair(a: ArtContext, m: Material): Material {
 }
 
 /** The character's materials, with the cloth swapped for this villager's outfit colour. */
-function outfitMaterial(a: ArtContext, m: Material, outfit: number, cache: Map<number, Map<Material, Material>>): Material {
+export function outfitMaterial(a: ArtContext, m: Material, outfit: number, cache: Map<number, Map<Material, Material>>): Material {
   const std = m as MeshStandardMaterial;
   if (!/Cloth/.test(m.name) || !std.map) {
     // Shared skin, hair, eyes: fix up once like Player.prepareMaterials does.

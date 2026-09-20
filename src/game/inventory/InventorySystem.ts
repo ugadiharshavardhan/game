@@ -110,12 +110,12 @@ export class InventorySystem {
   }
 
   /**
-   * The moon overwhelmed the player: half the bag (rounded down) falls where they stand, one item at
-   * a time from the fullest stack — so a failure costs a little of everything, not one whole kind,
-   * and a single carried item is never lost. Returns what fell, to be left in the world.
+   * The moon overwhelmed the player: a few offerings fall where they stand, one at a time from the
+   * fullest stack — so it costs a little of everything, never one whole kind, never more than half
+   * the bag, and never a lone carried item. Returns what fell, to be left in the world.
    */
-  dropForFailure(): InventoryStack[] {
-    let toDrop = Math.floor(this.used / 2);
+  dropForFailure(limit = 3): InventoryStack[] {
+    let toDrop = Math.min(Math.floor(this.used / 2), Math.max(Math.floor(limit), 0));
     if (toDrop <= 0) return [];
     const dropped = new Map<ItemId, number>();
     while (toDrop > 0) {

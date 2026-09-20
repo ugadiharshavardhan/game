@@ -27,6 +27,11 @@ export class AudioBank {
     this.sets.set(set, buffers.filter((b): b is AudioBuffer => b !== null));
   }
 
+  /** The node everything plays through: the ambience beds hang off it too. */
+  get bus(): GainNode {
+    return this.master;
+  }
+
   /** Registers a buffer made in code (see SoundFx) under a set name. */
   addBuffer(set: string, buffer: AudioBuffer): void {
     const list = this.sets.get(set) ?? [];

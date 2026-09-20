@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { EventBus } from '../../shared/EventBus';
 import type { InputDevice, PromptInfo } from '../../shared/events';
 import { useGameEvent } from '../hooks/useGameEvent';
 
@@ -12,7 +11,7 @@ const KEY: Record<InputDevice, string> = { keyboard: 'E', gamepad: 'A', touch: '
  *
  *   keyboard   [E] COLLECT        · Marigolds ×3
  *   controller (A) ENTER HOUSE    · The Patils’ home
- *   touch      a big tappable button: COLLECT / ENTER
+ *   touch      the verb over the object; the thumb button is in TouchControls
  *
  * When the anchor is off screen (or behind the camera) the prompt rests at the bottom centre.
  */
@@ -32,24 +31,22 @@ export function InteractionPrompt({ device }: { device: InputDevice }) {
   });
 
   if (!prompt) return null;
+  // On a phone the big INTERACT button lives with the other touch controls; here we only name
+  // what it would do, floating over the thing itself.
   const touch = device === 'touch';
-  const use = () => EventBus.emit('input:action', { action: 'interact' });
 
   return (
     <div ref={ref} className="pointer-events-none absolute z-10" style={{ left: '50%', top: '80%' }}>
       <div key={prompt.id} className="-translate-x-1/2 -translate-y-full animate-[prompt-in_180ms_ease-out] pb-3">
         {touch ? (
-          <button
-            type="button"
-            onClick={use}
-            aria-label={`${prompt.verb}${prompt.detail ? `: ${prompt.detail}` : ''}`}
-            className={`pointer-events-auto flex min-h-12 min-w-28 flex-col items-center justify-center rounded-2xl border px-5 py-2 shadow-lg shadow-black/40 backdrop-blur-md transition active:scale-95 ${
-              prompt.enabled ? 'border-lamp-400/70 bg-night-950/75 text-lamp-200' : 'border-night-700 bg-night-950/70 text-dusk-400/80'
+          <div
+            className={`flex flex-col items-center rounded-2xl border px-4 py-1.5 shadow-lg shadow-black/40 backdrop-blur-md ${
+              prompt.enabled ? 'border-lamp-400/50 bg-night-950/70 text-lamp-200' : 'border-night-700 bg-night-950/65 text-dusk-400/80'
             }`}
           >
-            <span className="text-sm font-semibold tracking-[0.2em]">{prompt.mobileVerb}</span>
+            <span className="text-xs font-semibold tracking-[0.2em]">{prompt.mobileVerb}</span>
             {prompt.detail && <span className="mt-0.5 max-w-44 truncate text-[10px] tracking-wide opacity-75">{prompt.detail}</span>}
-          </button>
+          </div>
         ) : (
           <div
             className={`flex items-center gap-2.5 whitespace-nowrap rounded-full border py-1.5 pl-1.5 pr-4 shadow-lg shadow-black/40 backdrop-blur-md ${

@@ -4,6 +4,13 @@
 > Status: design locked for MVP; the core loop is implemented (see [SYSTEMS.md](SYSTEMS.md)).
 > The build moved from 2D Phaser to third-person 3D on Three.js + Rapier; the systems below map
 > onto `src/game/` as SYSTEMS.md describes. Offerings are now seven puja items with quantities.
+>
+> Two things below were renamed on the way in, and **SYSTEMS.md is the accurate account** of what
+> the game does: the five phases are now `safe · warning · rising · active · fading`
+> (`MoonState.ts`), and *Purity draining to zero* became **Exposure climbing to 100**
+> (`ExposureSystem.ts`) — the same idea the other way up, with a smaller cost when it fills:
+> three offerings dropped and a lift indoors from the neighbours, rather than a walk back to the
+> temple to be cleansed.
 
 ---
 

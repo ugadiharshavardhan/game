@@ -13,6 +13,8 @@ export interface ItemDef {
   id: ItemId;
   /** As shown on a slot and in prompts: "Flowers". */
   name: string;
+  /** The same thing, counted one at a time: "1 Flower". Only where the name is a plural. */
+  one?: string;
   /** One respectful line for the bag's detail view. */
   description: string;
   /** How many the puja needs. */
@@ -25,6 +27,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   flowers: {
     id: 'flowers',
     name: 'Flowers',
+    one: 'Flower',
     description: 'Marigolds and red hibiscus — the red jaswand is Bappa’s favourite flower.',
     required: 5,
     glyph: '🌺',
@@ -46,6 +49,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   bananas: {
     id: 'bananas',
     name: 'Bananas',
+    one: 'Banana',
     description: 'Ripe bananas for the naivedya, the food offered to Bappa.',
     required: 4,
     glyph: '🍌',
@@ -60,6 +64,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   diya: {
     id: 'diya',
     name: 'Diyas',
+    one: 'Diya',
     description: 'Clay lamps for the aarti, five flames for the five elements.',
     required: 5,
     glyph: '🪔',
@@ -67,6 +72,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   modak: {
     id: 'modak',
     name: 'Modaks',
+    one: 'Modak',
     description: 'Ukadiche modak, steamed and filled with coconut and jaggery — Bappa’s favourite sweet.',
     required: 5,
     glyph: '🍬',
@@ -102,6 +108,6 @@ export const TOTAL_REQUIRED = ITEM_IDS.reduce((n, id) => n + ITEMS[id].required,
 
 /** "3 Flowers, 4 Bananas and 1 Coconut". */
 export function describeStacks(stacks: readonly InventoryStack[]): string {
-  const parts = stacks.map((s) => `${s.quantity} ${ITEMS[s.id].name}`);
+  const parts = stacks.map((s) => `${s.quantity} ${(s.quantity === 1 && ITEMS[s.id].one) || ITEMS[s.id].name}`);
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }

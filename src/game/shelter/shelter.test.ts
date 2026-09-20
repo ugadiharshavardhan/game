@@ -12,7 +12,7 @@ import { type CameraTarget, ThirdPersonCamera } from '../camera/ThirdPersonCamer
 import { DEFAULT_PLAYER_CONFIG } from '../config/playerConfig';
 import type { Input } from '../core/Input';
 import { CAMERA_QUERY, Physics } from '../core/Physics';
-import { PuritySystem } from '../moon/PuritySystem';
+import { ExposureSystem } from '../moon/ExposureSystem';
 import { PlayerController } from '../player/PlayerController';
 import { PlayerState, PlayerStateId } from '../player/PlayerState';
 import { buildColliders } from '../world/village/colliders';
@@ -137,13 +137,13 @@ describe('safe houses', () => {
       // The door swings shut behind; the interior camera takes over.
       w.until(() => house.isShut && w.cam.shotBlend === 1, `${id}: door shutting`);
 
-      // The moon is out: indoors, nothing drains.
-      const purity = new PuritySystem();
+      // The moon is out: indoors, it cannot touch you.
+      const exposure = new ExposureSystem();
       for (let k = 0; k < 60 * 5; k++) {
         w.step(`${id}: waiting indoors`);
-        purity.update(DT, { dangerous: true, sheltered: w.shelter.isSafe, openGround: false });
+        exposure.update(DT, { moonRate: 1, sheltered: w.shelter.isSafe, openGround: false, covered: false, gait: 'still', shelterDistance: 0 });
       }
-      expect(purity.value).toBe(100);
+      expect(exposure.value).toBe(0);
 
       // Walk the room's corners with the interior camera watching; still safe, still clear.
       const r = i.dims;

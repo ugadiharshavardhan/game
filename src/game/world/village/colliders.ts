@@ -61,8 +61,10 @@ export function buildColliders(layout: VillageLayout, level: Level, physics: Phy
     houseZones.set(sensor.handle, d.houseId);
   }
 
+  // The temple's ground, not just the offering step: the whole mandapa in front of the sanctum,
+  // so the puja's shopping list is up before the player reaches the altar.
   const t = level.templeOffer;
-  const templeTrigger = physics.addSensorBox(new Vector3(t.x, t.y + 1, t.z), new Vector3(3.2, 2, 2.6));
+  const templeTrigger = physics.addSensorBox(new Vector3(t.x, t.y + 1.4, t.z + 3), new Vector3(11, 3.2, 10));
 
   return { zones, templeTrigger, houseZones, doorColliders };
 }

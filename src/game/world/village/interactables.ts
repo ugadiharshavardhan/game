@@ -34,12 +34,14 @@ export class TempleAltar implements IInteractable {
   private glow = 0;
   private readonly inventory: InventorySystem;
   private readonly onPray: () => void;
+  private readonly onComplete: () => void;
 
-  constructor(position: Vector3, inventory: InventorySystem, onPray: () => void) {
+  constructor(position: Vector3, inventory: InventorySystem, onPray: () => void, onComplete: () => void) {
     this.position = position;
     this.promptAnchor = position.clone().setY(position.y + 1.25);
     this.inventory = inventory;
     this.onPray = onPray;
+    this.onComplete = onComplete;
   }
 
   /** How many carried items the puja still needs. */
@@ -56,7 +58,8 @@ export class TempleAltar implements IInteractable {
     if (this.inventory.pujaComplete) return { verb: 'Pray', mobileVerb: 'PRAY', detail: 'Ganpati Bappa Morya!', enabled: true };
     const n = this.offerable;
     if (n > 0) return { verb: 'Offer', mobileVerb: 'OFFER', detail: `${n} offering${n === 1 ? '' : 's'} for Bappa`, enabled: true };
-    return { verb: 'Pray', mobileVerb: 'PRAY', detail: 'Restores your purity', enabled: true };
+    // Nothing to place yet: a prayer steadies you after the moonlight.
+    return { verb: 'Pray', mobileVerb: 'PRAY', detail: 'The puja still wants more', enabled: true };
   }
 
   action(): PlayerAction {
@@ -73,7 +76,7 @@ export class TempleAltar implements IInteractable {
     const moved = this.inventory.offerAtTemple();
     this.onPray();
     if (moved.length) EventBus.emit('ui:toast', { text: `Offered ${describeStacks(moved)}`, tone: 'good' });
-    if (!wasComplete && this.inventory.pujaComplete) EventBus.emit('ui:puja-complete');
+    if (!wasComplete && this.inventory.pujaComplete) this.onComplete();
   }
 
   /** 0..1, fading after an offering — renderers brighten the sanctum lamps with it. */

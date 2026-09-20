@@ -603,7 +603,7 @@ function moonMaterials(a: ArtContext): MoonMaterials {
         vertexShader: `attribute vec2 aFade; varying vec2 vFade;
           void main() { vFade = aFade; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `uniform float uMoon; uniform vec3 uColour; varying vec2 vFade;
-          void main() { float a = uMoon * vFade.y * 0.1 * pow(clamp(1.0 - vFade.x, 0.0, 1.0), 1.3); gl_FragColor = vec4(uColour * a, 1.0); }`,
+          void main() { float a = uMoon * vFade.y * 0.07 * pow(clamp(1.0 - vFade.x, 0.0, 1.0), 1.3); gl_FragColor = vec4(uColour * a, 1.0); }`,
         transparent: true,
         depthWrite: false,
         blending: AdditiveBlending,

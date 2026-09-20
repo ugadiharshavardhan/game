@@ -24,8 +24,9 @@ const DT = 1 / 30;
 function setup(open = true) {
   const physics = new Physics(RAPIER);
   physics.addBox(new Vector3(0, -0.5, 0), new Vector3(40, 1, 40));
-  const gameplay = new Gameplay(physics, null, 1);
-  const altar = new TempleAltar(new Vector3(0, 0, 8), gameplay.inventory, gameplay.services.onPray);
+  const gameplay = new Gameplay(physics, null, null, 1);
+  const services = gameplay.services;
+  const altar = new TempleAltar(new Vector3(0, 0, 8), gameplay.inventory, services.onPray, services.onPujaComplete);
   const drops: IInteractable[] = [];
   const world: World = {
     interactables: [altar],
@@ -35,6 +36,8 @@ function setup(open = true) {
     sun: new DirectionalLight(),
     follow() {},
     isOpenGround: () => open,
+    isCovered: () => false,
+    shelterDistance: () => 12,
     dropOfferings(at, stacks, onEmpty) {
       const d = new DroppedOfferings(at, stacks, gameplay.inventory, (x) => onEmpty(x));
       drops.push(d);
@@ -46,6 +49,7 @@ function setup(open = true) {
   const player: GameplayActor = {
     feet: new Vector3(0, 0, 0),
     yaw: 0,
+    gait: 'normal',
     playAction(action, contact, done) {
       actions.push(action);
       contact();
@@ -78,19 +82,20 @@ describe('Gameplay', () => {
     const toasts: string[] = [];
     EventBus.on('ui:toast', ({ text }) => toasts.push(text));
 
-    gameplay.moon.skipTo('moonlight');
+    gameplay.moon.skipTo('active');
     let t = 0;
     while (!drops.length && t < 30) {
       frame();
       t += DT;
     }
     expect(drops, 'overwhelmed on open ground within the moonlight').toHaveLength(1);
-    expect(inv.used).toBe(5);
-    expect(gameplay.purity.value).toBeGreaterThan(0);
-    expect(toasts.some((x) => x.includes('fell where you stood'))).toBe(true);
+    // A few offerings, not the bag: three of the ten.
+    expect(inv.used).toBe(7);
+    expect(gameplay.exposure.value).toBe(0);
+    expect(toasts.some((x) => x.includes('overwhelms you'))).toBe(true);
 
     // Clouds cover the moon; walk back to the bundle and collect it.
-    gameplay.moon.skipTo('day');
+    gameplay.moon.skipTo('safe');
     player.feet.set(0, 0, -0.9); // facing +z toward where it fell
     frame();
     frame(true);
@@ -104,14 +109,14 @@ describe('Gameplay', () => {
     gameplay.inventory.add('modak', 5);
     for (let i = 0; i < 60 / DT; i++) frame();
     expect(drops).toHaveLength(0);
-    expect(gameplay.purity.value).toBe(100);
+    expect(gameplay.exposure.value).toBe(0);
   });
 
   it('at the temple: offering moves what the puja needs, and prayer restores purity', () => {
     const { gameplay, player, frame, actions } = setup();
     gameplay.inventory.add('modak', 5);
     gameplay.inventory.add('rice', 2);
-    gameplay.purity.value = 30;
+    gameplay.exposure.value = 30;
     player.feet.set(0, 0, 6.5);
     frame();
     expect(gameplay.interaction.target?.id).toBe('temple:altar');
@@ -119,7 +124,7 @@ describe('Gameplay', () => {
     expect(actions).toEqual(['Celebrate']);
     expect(gameplay.inventory.used).toBe(0);
     expect(gameplay.inventory.offered('modak')).toBe(5);
-    expect(gameplay.purity.value).toBe(100);
+    expect(gameplay.exposure.value).toBe(0);
   });
 
   it('the bag being open holds the action button', () => {

@@ -97,25 +97,32 @@ describe('InventorySystem', () => {
   });
 
   describe('a failure under the moon', () => {
-    it('drops half the bag, rounded down — never all of it', () => {
+    it('drops a few offerings, never half a full bag', () => {
       const inv = new InventorySystem();
       inv.add('flowers', 3);
       inv.add('durva', 2);
       inv.add('coconut', 1);
       inv.add('bananas', 4);
       const dropped = inv.dropForFailure();
-      expect(dropped.reduce((n, s) => n + s.quantity, 0)).toBe(5);
-      expect(inv.used).toBe(5);
+      expect(dropped.reduce((n, s) => n + s.quantity, 0)).toBe(3);
+      expect(inv.used).toBe(7);
+    });
+
+    it('never takes more than half, however small the bag', () => {
+      const inv = new InventorySystem();
+      inv.add('flowers', 4);
+      expect(inv.dropForFailure(3).reduce((n, s) => n + s.quantity, 0)).toBe(2);
+      expect(inv.used).toBe(2);
     });
 
     it('takes from the fullest stacks first, a little of everything', () => {
       const inv = new InventorySystem();
       inv.add('diya', 5);
       inv.add('modak', 5);
-      const dropped = new Map(inv.dropForFailure().map((s) => [s.id, s.quantity]));
-      expect(dropped.get('diya')).toBeGreaterThanOrEqual(2);
-      expect(dropped.get('modak')).toBeGreaterThanOrEqual(2);
-      expect(inv.count('diya') + inv.count('modak')).toBe(5);
+      const dropped = new Map(inv.dropForFailure(4).map((s) => [s.id, s.quantity]));
+      expect(dropped.get('diya')).toBe(2);
+      expect(dropped.get('modak')).toBe(2);
+      expect(inv.count('diya') + inv.count('modak')).toBe(6);
     });
 
     it('a single carried item is never lost', () => {

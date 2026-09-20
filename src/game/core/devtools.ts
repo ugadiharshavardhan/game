@@ -4,11 +4,11 @@
  *
  *   __seva.teleport(x, z, yawDeg)   __seva.look(yawDeg, pitchDeg)   __seva.info()
  *   await __seva.walkTo(x, z, { run, sneak })  — autopilot over the nav grid, real controller
- *   __seva.moon('moonlight')   __seva.give('flowers', 3)   __seva.interact()
+ *   __seva.moon('active')   __seva.give('flowers', 3)   __seva.interact()
  *   await __seva.enter('patil') / __seva.leave()  — a shelter's door sequence, for real
  */
 import { Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three';
-import type { MoonPhase } from '../../shared/types';
+import type { MoonStateName } from '../../shared/types';
 import type { ItemId } from '../../shared/items';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import type { Gameplay } from '../Gameplay';
@@ -115,8 +115,8 @@ export async function installDevtools(h: DevHandle): Promise<void> {
         };
       });
     },
-    moon(phase: MoonPhase) {
-      h.gameplay.moon.skipTo(phase);
+    moon(state: MoonStateName) {
+      h.gameplay.moon.skipTo(state);
     },
     give(item: ItemId, n = 1) {
       return h.gameplay.inventory.add(item, n);
@@ -158,8 +158,8 @@ export async function installDevtools(h: DevHandle): Promise<void> {
         render: { calls: r.render.calls, triangles: r.render.triangles, geometries: r.memory.geometries, textures: r.memory.textures, programs: r.programs?.length ?? 0 },
         safe: h.world.shelter?.isSafe ?? false,
         shelter: h.world.shelter?.current?.houseId ?? null,
-        moon: h.gameplay.moon.phase,
-        purity: Math.round(h.gameplay.purity.value),
+        moon: h.gameplay.moon.state,
+        exposure: Math.round(h.gameplay.exposure.value),
         bag: h.gameplay.inventory.snapshot(),
         target: h.gameplay.interaction.target?.id ?? null,
       };

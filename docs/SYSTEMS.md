@@ -1,8 +1,9 @@
 # Moonlight Seva — gameplay systems
 
 How the run works in code: the puja items, the interaction system, the bag, safe houses, the
-moon and purity. Everything here is TypeScript on Three.js and Rapier (the project's stack); the
-brief's Unity names map one-to-one onto files:
+moon cycle and everything it drives — light, sound, the villagers, the dogs, exposure, the
+closing puja and the score. Everything here is TypeScript on Three.js and Rapier (the project's
+stack); the brief's Unity names map one-to-one onto files:
 
 | Brief (Unity) | Here | What it is |
 | --- | --- | --- |
@@ -16,8 +17,13 @@ brief's Unity names map one-to-one onto files:
 | `SafeHouse.cs` | `src/game/shelter/SafeHouse.ts` | One enterable house: door, prompts |
 | `HouseInterior.cs` | `src/game/shelter/HouseInterior.ts` | Its front room, in world space |
 | `ShelterManager.cs` | `src/game/shelter/ShelterManager.ts` | Who is inside; the walk through the door |
+| `MoonState.cs` | `src/game/moon/MoonState.ts` | The five states, their lengths, and the curves everything follows |
+| `MoonManager.cs` | `src/game/moon/MoonManager.ts` | The cycle itself |
+| `MoonLightingController.cs` | `src/game/moon/MoonLightingController.ts` | Sunset → dusk → moonrise → moonlight |
+| `MoonAudioController.cs` | `src/game/moon/MoonAudioController.ts` | The five ambience beds, mixed against the sky |
+| `MoonUI.cs` | `src/ui/components/MoonUI.tsx` | The moon indicator and its exposure ring (React) |
 
-`src/game/Gameplay.ts` owns the run (bag, moon, purity, interaction, shelter) and updates them
+`src/game/Gameplay.ts` owns the run (bag, moon, exposure, interaction, shelter, score) and updates them
 in order each frame; `Engine.ts` owns rendering and the loop. React only ever sees plain events
 (`src/shared/events.ts`).
 
@@ -25,7 +31,8 @@ in order each frame; `Engine.ts` owns rendering and the loop. React only ever se
 
 The puja needs 25 things (`src/shared/items.ts`): 5 flowers, 3 durva, 1 coconut, 4 bananas,
 2 rice, 5 diyas, 5 modaks. The bag holds 15, so it always takes at least two trips to the temple.
-Between trips the monsoon clouds part and the Chaturthi moon shines: be indoors, or lose purity.
+Between trips the monsoon clouds part and the Chaturthi moon shines: be indoors, or the light
+finds you. The run ends at the temple, with the closing puja and a score.
 
 ## Puja items
 
@@ -108,17 +115,86 @@ player walks out onto the veranda, the door shuts behind them. The bag and the r
 `shelter.test.ts` does this for every shelter with the real controller, and checks the camera
 against every wall on every frame, including through the doorway blends.
 
-## The moon and purity
+## The moon cycle
 
-`MoonCycle`: day (45 s) → dusk (20 s) → moonrise (5 s, the grace to reach a door) → moonlight
-(25 s) → moonset (6 s), each ±10 % by seed; the first calm lasts 70 s. The sky tells the player,
-never a countdown: at dusk the sun sinks and shadows stretch; at moonrise a gong sounds and the
-light swings to a high, cold moon; in moonlight the sky is deep blue with stars, and the screen's
-edges go cold while you're exposed.
+`MoonState.ts` holds the five states and how long each lasts — safe 240 s, warning 30 s, rising
+20 s, active 60 s, fading 20 s, each ±8 % by seed, with the first safe stretch shortened to 150 s
+— and two curves every other system reads:
 
-`PuritySystem`: in moonlight, outdoors drains purity (8/s on open ground, 5/s among the houses);
-indoors nothing drains and purity recovers. Praying at the temple restores it fully. At zero the
-player is overwhelmed: half the bag falls (see above) and purity comes back to 40.
+- `moonlightFor(state, progress)` → 0..1, how much moonlight is falling. It starts to climb
+  during the *warning*, so the sky cools before the moon is up, and it is continuous across every
+  state boundary (there is a test for that).
+- `exposureRateFor(state, progress)` → 0..1, how fast being outside costs anything. It is zero
+  until the moon actually rises, so the whole warning is free.
+
+`MoonManager` is the state machine: `state`, `progress`, `moonlight`, `exposureRate`,
+`dangerous`, `goingHome`, `untilMoonlight`, `onState(listener)`, and `skipTo(state)` for the
+devtools. Nothing about it is astronomical; it is a timer with a nice curve on it.
+
+## What the moon changes
+
+**Light** (`MoonLightingController`). Four written-down moments — SUNSET, DUSK, MOONRISE,
+MOONLIGHT — interpolated by `moonlight`, driving one directional light, one hemisphere light, the
+sky shader, the fog, the exposure and the stars. The light is the sun until it sets and the moon
+after; the hand-over happens at the darkest minute of dusk, when almost nothing is lit, so the
+change of direction cannot be seen. The moon rises as the night goes on (4° → 38°), the village's
+own fire (`lamps`, `flames` and the `lamplit` window material) is pushed up as the sky comes down,
+and bloom stays where it was: warm against cool, not a haze. Two low sheets of drifting mist fade
+in for the night, faded out near the camera so they never wash the screen.
+
+**Sound** (`MoonAudioController`, `audio/Ambience.ts`). Five looping beds, all synthesised at
+start-up so the game ships no recordings and owes no licence: *evening* (breeze, birds, a far-off
+crowd), *night* (crickets, frogs, colder wind), *moon* (a low drone with a beat in it), *festival*
+(a dhol, a crowd and small bells, positioned at the pandal) and *temple* (plucked strings and a
+bell, positioned at the temple). The mix follows `moonlight`: the festival packs up, the birds
+give way to crickets, and under a full moon the village all but stops. Indoors everything goes
+behind a low-pass filter. Two beds are real `PannerNode`s and follow the camera's ear.
+
+**The village** (`render/art/life.villagers.ts`, `life.dogs.ts`). Seven people are still out —
+villagers, a shopkeeper, children, an elderly neighbour — walking short errands between stands.
+When `goingHome` turns true they take the shortest path to their own door and go in; when the moon
+has gone they come back out. They are drawn as six baked phases of a walk, swapped in turn, so a
+moving villager costs no skinning, no mixer and no more draw calls than a standing one, and the
+whole cast shares one set of geometry.
+
+Three dogs sleep in the dust until the player's feet carry to them — running carries about 20 m,
+walking 13, sneaking 6 — then lift their heads, then bark. Barking costs nothing: it tells the
+lane you are there, and that is all. When the signs come the dogs stop wandering and settle.
+
+**The player's own words.** At the warning and again at moonrise the devotee says what he sees.
+The nine signs in the brief are the sky, the stars, the ambience thinning, the villagers going
+home, the dogs settling, the temple bell, the moon's glow, that line, and the moon itself. The
+only text is the small "Moonrise approaching" under the moon indicator.
+
+## Exposure
+
+`ExposureSystem`: 0–100, climbing only while the moon is up and the player is outside, from how
+much moonlight is falling, what is overhead (open ground worst, a lane better, a veranda or the
+temple's hall better still), how the player is moving (running catches the light, sneaking keeps
+you out of it) and how far the nearest door is. Inside a shelter it is zero and clears fast.
+
+At 55 the HUD says **Find shelter!**; at 100 the player is *overwhelmed* — three offerings slip
+from the bag onto the ground (where they can be picked up again), the nearest household takes
+them in, and exposure resets. The run continues. Nothing in the game ends a run except finishing
+the puja.
+
+The tuning is checked by tests rather than by eye: the worst case (running across open ground,
+far from any door) still leaves the best part of ten seconds from the first warning, an ordinary
+walk home leaves twenty, and staying under cover leaves the best part of a minute.
+
+## The closing puja
+
+When the last offering is given, `Gameplay` hands the run to `PujaSequence`: three held camera
+shots around the devotee while he offers and bows, a bell on each cut, the sanctum's lamps rising
+under it, and marigold petals and diya sparks over the platform (`render/art/temple.puja.ts`).
+Every shot stays on the village side of him — the camera never comes between the god and the
+person who came to see him — and the murti is only ever lit and circled. It runs about eleven
+seconds and can be skipped at any point.
+
+Then the results (`ui/components/ResultsScreen.tsx`): offerings collected and lost, doors reached
+in time, moonlight encounters, time taken, route efficiency, and the score — items, shelter,
+efficiency, time bonus, penalties — kept by `run/RunTracker.ts`. Play again remounts the engine
+from nothing.
 
 ## Animation and sound
 
@@ -129,17 +205,20 @@ solving hip height from the legs each sample, and carry their stride speed so pl
 controller's speed.
 
 Sounds (`audio/SoundFx.ts`) are synthesised at start-up: the pickup chime, leaves, a coconut's
-thunk, grains of rice, clay, the temple bell, a door's creak and thud, a knock, the moonrise gong.
+thunk, grains of rice, clay, the temple bell, a door's creak and thud, a knock, the moonrise gong
+and a dog's bark. The continuous beds are in `audio/Ambience.ts` (see above). A test checks every
+one of them is audible, finite and never clipping.
 
 ## Tuning
 
 Every number lives in one place: `CameraConfig.ts`, `playerConfig.ts`, `DEFAULT_INTERACTION_CONFIG`,
-`DEFAULT_SHELTER_CONFIG`, `DEFAULT_MOON_CONFIG`, `DEFAULT_PURITY_CONFIG`, and the item catalogue in
-`shared/items.ts`.
+`DEFAULT_SHELTER_CONFIG`, `DEFAULT_MOON_CONFIG`, `DEFAULT_EXPOSURE_CONFIG`,
+`DEFAULT_SCORE_WEIGHTS`, the `LOOKS` table in `MoonLightingController.ts`, and the item catalogue
+in `shared/items.ts`.
 
 ## Developer tools
 
 In `npm run dev`, `window.__seva` drives the game for testing: `teleport`, `look`,
-`await walkTo(x, z, { run })`, `moon('moonlight')`, `give('flowers', 3)`, `interact()`,
-`await enter('patil')`, `await leave()`, and `info()` (position, state, area, safe, purity, moon,
-bag, target, draw calls).
+`await walkTo(x, z, { run })`, `moon('active')` (or `'safe' | 'warning' | 'rising' | 'fading'`),
+`give('flowers', 3)`, `interact()`, `await enter('patil')`, `await leave()`, and `info()`
+(position, state, area, safe, exposure, moon, bag, target, draw calls).

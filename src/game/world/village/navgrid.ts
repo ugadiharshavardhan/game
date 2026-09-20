@@ -203,7 +203,8 @@ export function simplifyPath(g: NavGrid, pts: { x: number; z: number }[]): { x: 
  * A straight walk from a to b stays clear — with a one-cell margin, because the grid only knows
  * obstacles to the nearest cell and a capsule brushing a corner at that resolution gets caught.
  */
-function lineClear(g: NavGrid, a: { x: number; z: number }, b: { x: number; z: number }): boolean {
+/** True when a straight walk from a to b stays on open ground. */
+export function lineClear(g: NavGrid, a: { x: number; z: number }, b: { x: number; z: number }): boolean {
   const steps = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (g.cell * 0.5));
   for (let s = 0; s <= steps; s++) {
     const t = s / Math.max(steps, 1);

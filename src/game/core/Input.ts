@@ -39,6 +39,7 @@ export class Input {
   private readonly pendingLook = new Vector2();
   private readonly touchMove = new Vector2();
   private moveTouchId: number | null = null;
+  private stickShown = false;
   private lookTouchId: number | null = null;
   /** A second finger on the look side turns the drag into a pinch. */
   private pinchTouchId: number | null = null;
@@ -102,6 +103,21 @@ export class Input {
   }
 
   update(): void {
+    // The joystick's visual follows the thumb (React draws it; the canvas owns the touch).
+    if (this.moveTouchId !== null) {
+      EventBus.emit('ui:touch-stick', {
+        active: true,
+        originX: this.touchOrigin.x,
+        originY: this.touchOrigin.y,
+        dx: this.touchMove.x * 34,
+        dy: -this.touchMove.y * 34,
+      });
+      this.stickShown = true;
+    } else if (this.stickShown) {
+      this.stickShown = false;
+      EventBus.emit('ui:touch-stick', { active: false, originX: 0, originY: 0, dx: 0, dy: 0 });
+    }
+
     // Keyboard
     let x = 0;
     let y = 0;

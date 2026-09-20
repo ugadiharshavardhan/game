@@ -11,7 +11,7 @@ step inside a house and wait.
 | Document | What's in it |
 | --- | --- |
 | [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) | Gameplay loop, state machines, systems, data models, build order, risks, MVP scope |
-| [docs/SYSTEMS.md](docs/SYSTEMS.md) | How the run works: puja items, interaction, the bag, safe houses, the moon and purity |
+| [docs/SYSTEMS.md](docs/SYSTEMS.md) | How the run works: puja items, interaction, the bag, safe houses, the moon cycle, exposure, the closing puja and the score |
 | [docs/LEVEL_DESIGN.md](docs/LEVEL_DESIGN.md) | The village map, areas, shelter rules, puja item spots with measured distances |
 | [docs/ART_BRIEF.md](docs/ART_BRIEF.md) | Visual direction, cultural guidance, the art toolkit, per-module specs |
 
@@ -20,15 +20,23 @@ step inside a house and wait.
 Third-person 3D (Three.js + Rapier), playable start to finish: gather the seven puja items
 (flowers, durva, a coconut, bananas, rice, diyas, modaks) around the village — two bag-loads at
 least — and offer them at the temple, sheltering indoors whenever the clouds part and the
-Chaturthi moon shines. Ten houses can be walked into; the moon drains purity outdoors; a failure
-drops half the bag, never all of it. See [docs/SYSTEMS.md](docs/SYSTEMS.md).
+Chaturthi moon shines. Ten houses can be walked into.
+
+The evening runs on a five-state moon cycle (safe → warning → rising → active → fading) that
+drives the lighting from sunset through dusk to a risen moon, the five synthesised ambience beds,
+the villagers going home, the dogs settling, and *exposure* — which climbs while you are out under
+the light and, if it fills, costs you three offerings and a lift indoors from the neighbours,
+never the run. Finishing the puja plays a short cinematic at the temple and a results screen with
+the score. See [docs/SYSTEMS.md](docs/SYSTEMS.md).
 
 The devotee's animations are made in code for his skeleton (`src/game/player/proceduralClips.ts`).
 Mixamo clips baked into the .glb by `tools/blender/` (below) take over automatically when present.
 
 Controls: WASD / left stick move · mouse / right stick look · Shift run · Ctrl slow walk ·
 C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
-On touch: left half moves, right half looks, pinch zooms; prompts and the bag are buttons.
+On touch: a thumb joystick on the left, drag on the right to look, pinch zooms, and large
+COLLECT / SNEAK / bag / pause buttons; keyboard hints are hidden and a portrait phone is asked,
+once and quietly, to turn sideways.
 
 ## Commands
 
@@ -46,9 +54,9 @@ URL options (dev and prod): `?view=greybox` shows the village exactly as it coll
 those art modules (everything else greybox) for fast art iteration.
 
 In development, `window.__seva` offers `teleport(x, z, yawDeg)`, `look(yawDeg, pitchDeg)`,
-`walkTo(x, z, { run })` (an autopilot on the real controller), `moon(phase)`, `give(item, n)`,
-`interact()`, `enter(houseId)` / `leave()` and `info()` (position, area, safe, purity, bag,
-camera stats, draw calls). It is not included in production builds.
+`walkTo(x, z, { run })` (an autopilot on the real controller), `moon(state)`, `give(item, n)`,
+`interact()`, `enter(houseId)` / `leave()` and `info()` (position, area, safe, exposure, moon,
+bag, camera stats, draw calls). It is not included in production builds.
 
 ## Camera
 
@@ -88,31 +96,34 @@ tools/blender/            character build + Mixamo retarget scripts (the source 
 tools/level/              level map and distance report generators
 public/assets/            runtime assets: models/, textures/ (CC0 ambientCG), audio/ (CC0 Kenney)
 src/
-├── App.tsx               app-level state machine: menu ⇄ playing ⇄ paused
-├── ui/                   ── REACT LAYER ── MainMenu, GameCanvas, Hud, InteractionPrompt,
-│                         InventoryUI, PauseOverlay
+├── App.tsx               app-level state machine: menu ⇄ playing ⇄ results
+├── ui/                   ── REACT LAYER ── MainMenu, GameCanvas, Hud, MoonUI, InteractionPrompt,
+│                         InventoryUI, TouchControls, PauseOverlay, ResultsScreen, leaderboard
 ├── shared/               ── THE CONTRACT ── typed events, EventBus, the item catalogue
 └── game/                 ── 3D ENGINE ── (lazy-loaded)
     ├── index.ts          create/destroy the engine; the only entry point
-    ├── Gameplay.ts       the run: bag, moon, purity, interaction, shelter, in frame order
+    ├── Gameplay.ts       the run: bag, moon, exposure, interaction, shelter, score, in frame order
     ├── core/             Engine (renderer, loop), Input, Physics (Rapier, layers), AudioBank,
     │                     devtools (dev only)
-    ├── audio/            SoundFx — the synthesised one-shots
+    ├── audio/            SoundFx — the synthesised one-shots; Ambience — the five looping beds
     ├── interaction/      IInteractable, InteractionSystem (+ tests)
     ├── inventory/        InventorySystem, InventoryItem (+ tests)
     ├── items/            PujaItem
     ├── shelter/          SafeHouse, HouseInterior, ShelterManager (+ walk-in tests)
-    ├── moon/             MoonCycle, PuritySystem (+ tests)
+    ├── moon/             MoonState, MoonManager, MoonLightingController, MoonAudioController,
+    │                     ExposureSystem (+ tests)
+    ├── run/              RunTracker — the run's statistics and its score
     ├── config/           playerConfig.ts — every tunable player number
     ├── camera/           ThirdPersonCamera (with interior shots), CameraConfig, cameraMath (+ tests)
     ├── player/           Player, PlayerController, PlayerState, PlayerAnimation, proceduralClips,
     │                     PlayerAudio, locomotion (pure maths + tests)
     └── world/
-        ├── environment.ts evening sky, sun, fog, image-based light — and the moon
+        ├── environment.ts the sky rig: sky dome, the one shadow light, fog, stars, moon, mist
         ├── Testbed.ts    the character test ground (?scene=testbed)
         └── village/      layout, solids, navgrid, colliders, triggers, interactables (+ level tests)
+            ├── PujaSequence.ts the closing cinematic's camera, beats and bells
             └── render/   greybox.ts, art/ (ground, houses + interiors, temple, trees, shops,
-                          props, festival, puja items, villagers)
+                          props, festival, puja items, villagers, walkers, dogs, petals)
 ```
 
 ## The three rules

@@ -30,10 +30,13 @@ export interface ShelterActor {
 }
 
 /** What the shelter needs from the camera. */
-export interface ShelterCamera {
+/** A camera that can be taken off the player and given a shot to hold. */
+export interface ScriptedCamera {
   setShot(shot: CameraShot | null, seconds: number, via?: readonly Vector3[]): void;
   setOrientation(yaw: number, pitch: number, immediate?: boolean): void;
 }
+
+export type ShelterCamera = ScriptedCamera;
 
 export interface ShelterConfig {
   /** Walking pace through the doorway, m/s. */
@@ -184,6 +187,34 @@ export class ShelterManager {
         this.shotOwner = null;
       }
     }
+  }
+
+  /**
+   * The moonlight overwhelmed the player outside: the nearest household opens its door and takes
+   * them in. Returns whose home it was, or null if there is none to reach.
+   */
+  takeIndoors(at: Vector3): string | null {
+    const a = this.actor;
+    if (!a || !this.houses.length) return null;
+    let best = this.houses[0];
+    let bestD = Infinity;
+    for (const h of this.houses) {
+      const d = h.interior.outside.distanceToSquared(at);
+      if (d < bestD) {
+        bestD = d;
+        best = h;
+      }
+    }
+    this.steps.length = 0;
+    a.stopWalking();
+    a.setScripted(false);
+    a.placeAt(best.interior.inside, best.interior.inwardYaw);
+    best.close();
+    this.current = best;
+    this.camera?.setOrientation(best.interior.outwardYaw, this.config.doorPitchDeg * DEG, true);
+    this.shotFor(best, 0.45, []);
+    EventBus.emit('ui:shelter', { inside: true, family: best.interior.label });
+    return best.interior.label;
   }
 
   private shotFor(house: SafeHouse, seconds: number, via: Vector3[]): void {

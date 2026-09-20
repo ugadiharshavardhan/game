@@ -23,7 +23,8 @@ export type SoundKey =
   | 'moonset'
   | 'drop'
   | 'bag-open'
-  | 'bag-close';
+  | 'bag-close'
+  | 'bark';
 
 const VOLUME: Record<SoundKey, number> = {
   collect: 0.35,
@@ -42,6 +43,7 @@ const VOLUME: Record<SoundKey, number> = {
   drop: 0.6,
   'bag-open': 0.3,
   'bag-close': 0.3,
+  bark: 0.45,
 };
 
 /** Sounds layered on top of a pickup: every item gets the chime plus its own material. */
@@ -234,6 +236,12 @@ const RECIPES: Record<SoundKey, (rate: number) => Float32Array> = {
   // The cloth bag: a short brush of fabric up, or down.
   'bag-open': (rate) => noiseBurst(rate, 0.22, (t) => Math.sin(Math.min(t / 0.22, 1) * Math.PI), (t) => 1200 + 5000 * t, 1.4, 41),
   'bag-close': (rate) => noiseBurst(rate, 0.2, (t) => Math.sin(Math.min(t / 0.2, 1) * Math.PI), (t) => 2400 - 5000 * t, 1.4, 42),
+  // A village dog: one bark, throat and air together, with the pitch falling off the end of it.
+  bark: (rate) => {
+    const voice = partials(rate, 0.22, [[310, 1, 0.055], [620, 0.45, 0.04], [930, 0.22, 0.03], [1500, 0.1, 0.02]], 0.006, 2.5);
+    const air = noiseBurst(rate, 0.22, (t) => Math.exp(-t / 0.05) * Math.min(t / 0.004, 1), (t) => 1400 - 700 * t, 1.1, 57);
+    return mix(voice, air, 0, 0.45);
+  },
 };
 
 /** Exposed for tests. */
