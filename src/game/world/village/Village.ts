@@ -35,7 +35,7 @@ export async function buildVillage(
   quality: QualityProfile = PROFILES.high,
 ): Promise<World & { triggers: TriggerSystem; items: PujaItem[] }> {
   const level = buildLevel(VILLAGE);
-  const env = buildEnvironment(scene, renderer, { ...EVENING, mist: quality.mist });
+  const env = buildEnvironment(scene, renderer, EVENING);
   const colliders = buildColliders(VILLAGE, level, physics);
   const ctx: VisualsContext = {
     scene,

@@ -37,7 +37,13 @@ export function loadCharacter(kind: FolkKind): Promise<Character> {
       if (pores) applySkinDetail(gltf.scene, pores);
       const c = DEFAULT_PLAYER_CONFIG;
       const clips = [
-        ...buildProceduralClips(gltf.scene, { slow: c.slowWalkSpeed, walk: c.walkSpeed, run: c.runSpeed, crouch: c.crouchSpeed }),
+        ...buildProceduralClips(gltf.scene, {
+          slow: c.slowWalkSpeed,
+          walk: c.walkSpeed,
+          fastWalk: c.fastWalkSpeed,
+          run: c.runSpeed,
+          crouch: c.crouchSpeed,
+        }),
         ...buildActivityClips(gltf.scene),
       ];
       return { kind, scene: gltf.scene, clips: new Map(clips.map((k) => [k.name, k])) };
