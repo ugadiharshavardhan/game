@@ -11,7 +11,7 @@ import { ITEM_IDS, ITEMS } from '../shared/items';
 import { Physics } from './core/Physics';
 import { Gameplay, type GameplayActor } from './Gameplay';
 import { DEFAULT_NIGHT_CONFIG, type NightConfig } from './night/NightClock';
-import type { PlayerAction } from './player/PlayerAnimation';
+import type { PlayerAction } from './player/CharacterAnimationController';
 import { PujaItem } from './items/PujaItem';
 import { TempleAltar } from './world/village/interactables';
 import { VILLAGE } from './world/village/layout';

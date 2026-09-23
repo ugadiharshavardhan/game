@@ -1,5 +1,7 @@
+import { UserButton } from '@clerk/react';
 import { useEffect, useState } from 'react';
 import type { GameSettings } from '../../shared/types';
+import { ClerkSessionBridge } from '../ClerkSessionBridge';
 import { services, useObservable } from '../services';
 import { Boards } from './Boards';
 import { HowToPlay } from './HowToPlay';
@@ -59,6 +61,7 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
     // The menu scrolls: on a phone held sideways the tall panels (how to play, the boards) are
     // taller than the screen, and a clipped panel puts its Back button out of reach.
     <main className="safe-top safe-bottom relative flex h-full w-full flex-col items-center overflow-y-auto overflow-x-hidden bg-night-950 px-6">
+      <ClerkSessionBridge onSignedOut={() => setPanel('name')} />
       <Backdrop />
 
       {dismissible && (
@@ -86,8 +89,8 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
           <NameGate
             initialName={profile?.displayName}
             initialCampus={profile?.campus}
-            onEnter={(name, campus) => {
-              const p = profiles.signIn(name, campus);
+            onEnter={(name, campus, clerkUserId) => {
+              const p = profiles.signIn(name, campus, clerkUserId);
               if (p) {
                 teams.announce(p);
                 home();
@@ -98,6 +101,9 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
 
         {panel === 'home' && (
           <nav className="w-full max-w-sm">
+            <div className="mb-4 flex justify-end">
+              <UserButton />
+            </div>
             <Primary onClick={onPlaySolo}>Play solo</Primary>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Secondary onClick={() => setPanel('create')}>Create team</Secondary>

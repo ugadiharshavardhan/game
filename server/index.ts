@@ -2,8 +2,8 @@
  * The session server for Moonlight Seva: teams, lobbies, the shared village, and both boards.
  *
  * It is deliberately small. One process serves the built game and the WebSocket beside it, keeps
- * its boards in a JSON file, and runs the same `Authority` the browser's offline mode runs — so
- * the rules a player meets are identical whether a server is there or not.
+ * its boards in Supabase (or a JSON file fallback), and runs the same `Authority` the browser's
+ * offline mode runs — so the rules a player meets are identical whether a server is there or not.
  *
  *   node --experimental-strip-types server/index.ts          (npm run server)
  *   PORT=8080 MAX_PLAYERS=6 node --experimental-strip-types server/index.ts
@@ -15,8 +15,17 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Authority, type PersistedState } from '../src/net/Authority.ts';
+import { Authority, type AuthorityStore, type PersistedState } from '../src/net/Authority.ts';
 import type { ClientMessage } from '../src/shared/multiplayer.ts';
+import { loadEnv } from './loadEnv.ts';
+import {
+  createSupabaseServerClient,
+  createSupabaseStore,
+  isSupabaseStoreConfigured,
+  loadBoardsFromSupabase,
+} from './supabaseStore.ts';
+
+loadEnv();
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DIST = join(import.meta.dirname, '..', 'dist');
@@ -34,7 +43,7 @@ const config = {
   teamScoreCount: Number(process.env.TEAM_SCORE_COUNT ?? 0),
 } as const;
 
-const store = {
+const fileStore: AuthorityStore = {
   load(): PersistedState | null {
     try {
       return existsSync(DATA) ? (JSON.parse(readFileSync(DATA, 'utf8')) as PersistedState) : null;
@@ -53,8 +62,17 @@ const store = {
   },
 };
 
-const authority = new Authority({ config, store });
-setInterval(() => authority.tick(), 30_000).unref();
+async function makeStore(): Promise<{ store: AuthorityStore; backend: 'supabase' | 'file' }> {
+  if (!isSupabaseStoreConfigured()) return { store: fileStore, backend: 'file' };
+  try {
+    const client = createSupabaseServerClient();
+    const initial = await loadBoardsFromSupabase(client);
+    return { store: createSupabaseStore(client, initial), backend: 'supabase' };
+  } catch (error) {
+    console.warn('[session] supabase store unavailable, using file:', error);
+    return { store: fileStore, backend: 'file' };
+  }
+}
 
 // ---- the built game, and a health check --------------------------------------------------------
 
@@ -74,11 +92,11 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-function serve(request: IncomingMessage, response: ServerResponse): void {
+function serve(request: IncomingMessage, response: ServerResponse, boardsBackend: string): void {
   const url = new URL(request.url ?? '/', 'http://localhost');
   if (url.pathname === '/healthz') {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ ok: true, players: 'ready', config }));
+    response.end(JSON.stringify({ ok: true, players: 'ready', config, boards: boardsBackend }));
     return;
   }
   if (!existsSync(DIST)) {
@@ -98,53 +116,65 @@ function serve(request: IncomingMessage, response: ServerResponse): void {
   createReadStream(file).pipe(response);
 }
 
-// ---- sockets -----------------------------------------------------------------------------------
+async function main(): Promise<void> {
+  const { store, backend } = await makeStore();
+  const authority = new Authority({ config, store });
+  setInterval(() => authority.tick(), 30_000).unref();
 
-const http = createServer(serve);
-const sockets = new WebSocketServer({ server: http, path: '/session', maxPayload: MAX_MESSAGE_BYTES });
+  const http = createServer((req, res) => serve(req, res, backend));
+  const sockets = new WebSocketServer({ server: http, path: '/session', maxPayload: MAX_MESSAGE_BYTES });
 
-let nextId = 1;
-sockets.on('connection', (socket: WebSocket) => {
-  const id = `c${nextId++}`;
-  let budget = MESSAGE_BUDGET;
-  let alive = true;
-  const refill = setInterval(() => (budget = MESSAGE_BUDGET), 1000);
-  const heartbeat = setInterval(() => {
-    if (!alive) return socket.terminate();
-    alive = false;
-    socket.ping();
-  }, 20_000);
-  socket.on('pong', () => (alive = true));
+  let nextId = 1;
+  sockets.on('connection', (socket: WebSocket) => {
+    const id = `c${nextId++}`;
+    let budget = MESSAGE_BUDGET;
+    let alive = true;
+    const refill = setInterval(() => (budget = MESSAGE_BUDGET), 1000);
+    const heartbeat = setInterval(() => {
+      if (!alive) return socket.terminate();
+      alive = false;
+      socket.ping();
+    }, 20_000);
+    socket.on('pong', () => (alive = true));
 
-  authority.connect(id, (message) => {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+    authority.connect(id, (message) => {
+      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+    });
+
+    socket.on('message', (raw) => {
+      alive = true;
+      if (budget-- <= 0) return;
+      let message: ClientMessage;
+      try {
+        message = JSON.parse(String(raw)) as ClientMessage;
+      } catch {
+        return;
+      }
+      if (!message || typeof message.type !== 'string') return;
+      try {
+        authority.message(id, message);
+      } catch (error) {
+        console.warn('[session] bad message', message.type, error);
+      }
+    });
+
+    socket.on('close', () => {
+      clearInterval(refill);
+      clearInterval(heartbeat);
+      authority.disconnect(id);
+    });
   });
 
-  socket.on('message', (raw: unknown) => {
-    alive = true;
-    if (budget-- <= 0) return;
-    let message: ClientMessage;
-    try {
-      message = JSON.parse(String(raw)) as ClientMessage;
-    } catch {
-      return;
-    }
-    if (!message || typeof message.type !== 'string') return;
-    try {
-      authority.message(id, message);
-    } catch (error) {
-      console.warn('[session] bad message', message.type, error);
-    }
+  http.listen(PORT, () => {
+    console.log(`[session] Moonlight Seva on http://localhost:${PORT}  ·  sockets at /session`);
+    console.log(
+      `[session] teams of ${config.minPlayers}–${config.maxPlayers}, ready ${config.requireReady ? 'required' : 'optional'}, sync ${config.syncHz} Hz`,
+    );
+    console.log(`[session] boards backend: ${backend}`);
   });
+}
 
-  socket.on('close', () => {
-    clearInterval(refill);
-    clearInterval(heartbeat);
-    authority.disconnect(id);
-  });
-});
-
-http.listen(PORT, () => {
-  console.log(`[session] Moonlight Seva on http://localhost:${PORT}  ·  sockets at /session`);
-  console.log(`[session] teams of ${config.minPlayers}–${config.maxPlayers}, ready ${config.requireReady ? 'required' : 'optional'}, sync ${config.syncHz} Hz`);
+main().catch((error) => {
+  console.error('[session] failed to start:', error);
+  process.exit(1);
 });

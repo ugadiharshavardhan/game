@@ -14,7 +14,9 @@
     "serve": "npm run build && npm run server"
   },
   "dependencies": {
+    "@clerk/react": "^6.17.0",
     "@dimforge/rapier3d-compat": "^0.20.0",
+    "@supabase/supabase-js": "^2.117.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.186.0"

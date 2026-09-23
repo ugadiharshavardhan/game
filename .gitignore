@@ -28,3 +28,9 @@ dist-ssr
 
 # Server runtime state
 server/data/
+
+# Local tooling / generated
+.agents/
+.cursor/
+supabase/.temp/
+skills-lock.json

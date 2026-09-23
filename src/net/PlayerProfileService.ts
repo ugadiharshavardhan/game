@@ -1,9 +1,9 @@
 /**
  * Who is playing — the whole of it.
  *
- * A name, optionally a campus, and an id this browser makes up the first time. No account, no
- * password, no email, no phone number, nothing that could identify a person off this device. Two
- * players called Harsha are different players because their ids differ, and for no other reason.
+ * A display name, optionally a campus, and a stable id. When the player signs in with Clerk
+ * (Google), that Clerk user id is the player id so scores follow the account. Offline or before
+ * sign-in, the browser still makes up a local id.
  */
 import { cleanCampus, cleanName, makePlayerId } from '../shared/identity';
 import type { PlayerProfile } from '../shared/multiplayer';
@@ -33,14 +33,18 @@ function write(profile: PlayerProfile): void {
 export class PlayerProfileService {
   readonly profile = new Observable<PlayerProfile | null>(read());
 
-  /** The name the player typed on the way in. Keeps their id if they have played before. */
-  signIn(displayName: string, campus = ''): PlayerProfile | null {
+  /**
+   * The name the player typed on the way in. Keeps their id if they have played before.
+   * When `clerkUserId` is set, that id is used so the same Google account keeps one score.
+   */
+  signIn(displayName: string, campus = '', clerkUserId?: string): PlayerProfile | null {
     const name = cleanName(displayName);
     if (!name) return null;
     const existing = this.profile.get();
+    const playerId = clerkUserId || existing?.playerId || makePlayerId();
     const profile: PlayerProfile = existing
-      ? { ...existing, displayName: name, campus: cleanCampus(campus) }
-      : { playerId: makePlayerId(), displayName: name, campus: cleanCampus(campus), createdAt: Date.now(), bestIndividualScore: 0, gamesPlayed: 0 };
+      ? { ...existing, playerId, displayName: name, campus: cleanCampus(campus) }
+      : { playerId, displayName: name, campus: cleanCampus(campus), createdAt: Date.now(), bestIndividualScore: 0, gamesPlayed: 0 };
     write(profile);
     this.profile.set(profile);
     return profile;

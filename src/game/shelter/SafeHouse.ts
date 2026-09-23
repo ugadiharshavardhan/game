@@ -6,7 +6,7 @@
 import type { Collider } from '@dimforge/rapier3d-compat';
 import { MathUtils, type Object3D } from 'three';
 import type { IInteractable, InteractionActor, PromptText } from '../interaction/IInteractable';
-import { PlayerAction } from '../player/PlayerAnimation';
+import { PlayerAction } from '../player/CharacterAnimationController';
 import type { HouseDef } from '../world/village/types';
 import { HouseInterior } from './HouseInterior';
 import type { ShelterManager } from './ShelterManager';

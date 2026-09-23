@@ -6,6 +6,8 @@
 export const PlayerStateId = {
   Idle: 'idle',
   Walking: 'walking',
+  /** Walking with purpose — the pace between a stroll and a run. */
+  FastWalking: 'fast-walking',
   Running: 'running',
   Sneaking: 'sneaking',
   Jumping: 'jumping',

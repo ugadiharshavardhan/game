@@ -20,7 +20,7 @@ import { Layer, type Physics } from '../core/Physics';
 import type { IInteractable, InteractionActor, PromptText } from '../interaction/IInteractable';
 import type { InventorySystem } from '../inventory/InventorySystem';
 import { InventoryItem } from '../inventory/InventoryItem';
-import { PlayerAction } from '../player/PlayerAnimation';
+import { PlayerAction } from '../player/CharacterAnimationController';
 import type { OfferingSpotDef } from '../world/village/types';
 
 /** What a renderer hands back for an item. */

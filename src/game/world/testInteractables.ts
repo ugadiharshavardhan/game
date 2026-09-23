@@ -6,7 +6,7 @@ import type { Collider } from '@dimforge/rapier3d-compat';
 import { type Group, MathUtils, type Mesh, type PointLight, type Sprite, type SpriteMaterial, Vector3 } from 'three';
 import type { SoundKey } from '../audio/SoundFx';
 import type { IInteractable, PromptText } from '../interaction/IInteractable';
-import { PlayerAction } from '../player/PlayerAnimation';
+import { PlayerAction } from '../player/CharacterAnimationController';
 
 /** Pick up → hides, comes back after a few seconds. */
 export class TestPickup implements IInteractable {

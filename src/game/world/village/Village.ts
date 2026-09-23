@@ -14,8 +14,8 @@ import { ShelterManager } from '../../shelter/ShelterManager';
 import { HouseInterior } from '../../shelter/HouseInterior';
 import { MoonLightingController } from '../../moon/MoonLightingController';
 import { PROFILES, type QualityProfile } from '../../core/quality';
-import { buildEnvironment } from '../environment';
-import type { World, WorldFrame, WorldServices } from '../World';
+import { buildEnvironment, EVENING } from '../environment';
+import type { FootSurface, World, WorldFrame, WorldServices } from '../World';
 import { buildColliders } from './colliders';
 import { PujaSequence } from './PujaSequence';
 import { LockedDoor, TempleAltar, VillagerTalk } from './interactables';
@@ -35,7 +35,7 @@ export async function buildVillage(
   quality: QualityProfile = PROFILES.high,
 ): Promise<World & { triggers: TriggerSystem; items: PujaItem[] }> {
   const level = buildLevel(VILLAGE);
-  const env = buildEnvironment(scene, renderer);
+  const env = buildEnvironment(scene, renderer, { ...EVENING, mist: quality.mist });
   const colliders = buildColliders(VILLAGE, level, physics);
   const ctx: VisualsContext = {
     scene,
@@ -118,6 +118,21 @@ export async function buildVillage(
     // Something overhead — a veranda, an awning, the temple's hall — keeps the moon off you.
     isCovered: () => physics.castRay(probe.set(feet.x, feet.y + 1.2, feet.z), up, 7, undefined, CAMERA_QUERY) !== null,
     shelterDistance: (p: Vector3) => shelterDoors.reduce((best, d) => Math.min(best, Math.hypot(p.x - d.x, p.z - d.z)), Infinity),
+    /**
+     * What the player is walking on. Indoors is a swept floor; the temple's platform and the
+     * paved lanes are stone; grass where the ground says grass; dirt everywhere else. The
+     * weights come from the same splat map the terrain is painted with, so the sound always
+     * agrees with what you can see under your feet.
+     */
+    surfaceAt(p: Vector3): FootSurface {
+      if (shelter.isSafe) return 'wood';
+      if (triggers.inTemple) return 'stone';
+      const s = visuals.surfaceAt?.(p.x, p.z);
+      if (!s) return 'dirt';
+      if (s.paving > 0.45) return 'stone';
+      if (s.lush > 0.4 && s.road < 0.35) return 'grass';
+      return 'dirt';
+    },
     pujaSequence(stage, done) {
       // Around the devotee where he stands, with the sanctum behind him.
       puja = new PujaSequence(stage, feet, () => {

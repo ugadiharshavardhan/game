@@ -122,6 +122,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
   return {
     doorHinges,
     puja,
+    surfaceAt: a.ground ? (x, z) => a.ground!.surfaceAt(x, z) : undefined,
     itemVisuals: items.visuals,
     itemIcons: items.icons,
     update(dt, frame) {

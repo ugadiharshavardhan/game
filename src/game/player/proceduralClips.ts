@@ -243,6 +243,9 @@ export interface Gait {
 export const GAITS = {
   slow: { thighFwd: 22, thighBack: 16, kneeLoad: 8, kneeSwing: 45, swingAt: 0.74, armSwing: 10, elbow: -12, elbowPump: 6, lean: 2, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
   walk: { thighFwd: 30, thighBack: 20, kneeLoad: 12, kneeSwing: 58, swingAt: 0.73, armSwing: 20, elbow: -16, elbowPump: 12, lean: 4, pelvisYaw: 6, sway: 0.025, flight: 0, stance: 0.6 },
+  // Somewhere to be, but not running: a longer stride, a quicker arm, a little more lean, and a
+  // shorter time with both feet down.
+  fast: { thighFwd: 38, thighBack: 23, kneeLoad: 18, kneeSwing: 74, swingAt: 0.71, armSwing: 25, elbow: -30, elbowPump: 14, lean: 7, pelvisYaw: 7, sway: 0.022, flight: 0, stance: 0.52 },
   run: { thighFwd: 52, thighBack: 24, kneeLoad: 32, kneeSwing: 105, swingAt: 0.68, armSwing: 26, elbow: -72, elbowPump: 8, lean: 11, pelvisYaw: 9, sway: 0.015, flight: 0.05, stance: 0.38 },
   crouch: { thighFwd: 34, thighBack: 8, kneeLoad: 0, kneeSwing: 40, swingAt: 0.74, armSwing: 8, elbow: -40, elbowPump: 4, lean: 0, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
 } satisfies Record<string, Gait>;
@@ -356,6 +359,49 @@ export function keyed(keys: [number, Pose][]): (t: number) => Pose {
 }
 
 export const STAND: Pose = idlePose(0, 0);
+
+/** A glance down the lane and back: head and eyes lead, the shoulders follow a little. */
+const LOOK_LEFT: Pose = {
+  turns: [...STAND.turns, ['Head', 'y', 26], ['Neck', 'y', 12], ['Spine2', 'y', 7], ['Head', 'x', -3]],
+};
+const LOOK_RIGHT: Pose = {
+  turns: [...STAND.turns, ['Head', 'y', -30], ['Neck', 'y', -13], ['Spine2', 'y', -8], ['Spine1', 'y', -4]],
+};
+
+/**
+ * A step round on the spot. The weight shifts onto the outside foot, the inside knee lifts and
+ * crosses, and the shoulders counter — what a person does instead of rotating like a turret.
+ */
+const PIVOT_LEFT: Pose = {
+  turns: [
+    ...STAND.turns,
+    ['Hips', 'y', 16],
+    ['Spine1', 'y', -10],
+    ['Head', 'y', -6],
+    ['LeftUpLeg', 'x', -26],
+    ['LeftLeg', 'x', 34],
+    ['LeftFoot', 'x', -8],
+    ['RightUpLeg', 'x', 6],
+    ['LeftArm', 'x', -10],
+    ['RightArm', 'x', 6],
+  ],
+  hips: { y: -0.015 },
+};
+const PIVOT_RIGHT: Pose = {
+  turns: [
+    ...STAND.turns,
+    ['Hips', 'y', -16],
+    ['Spine1', 'y', 10],
+    ['Head', 'y', 6],
+    ['RightUpLeg', 'x', -26],
+    ['RightLeg', 'x', 34],
+    ['RightFoot', 'x', -8],
+    ['LeftUpLeg', 'x', 6],
+    ['RightArm', 'x', -10],
+    ['LeftArm', 'x', 6],
+  ],
+  hips: { y: -0.015 },
+};
 
 /** Bending down to lift something from the ground with the right hand. */
 const REACH_DOWN: Pose = {
@@ -580,7 +626,7 @@ const AIRBORNE_B: Pose = {
 // ---- the clips ----------------------------------------------------------------------------------
 
 /**
- * Builds every clip PlayerAnimation asks for. Locomotion clips carry `userData.groundSpeed` (m/s);
+ * Builds every clip CharacterAnimationController asks for. Locomotion clips carry `userData.groundSpeed` (m/s);
  * cycle lengths are chosen so each gait's natural speed sits near the controller's.
  */
 /**
@@ -618,7 +664,7 @@ export class Poser {
   }
 }
 
-export function buildProceduralClips(model: Object3D, speeds: { slow: number; walk: number; run: number; crouch: number }): AnimationClip[] {
+export function buildProceduralClips(model: Object3D, speeds: { slow: number; walk: number; fastWalk: number; run: number; crouch: number }): AnimationClip[] {
   const rig = new Rig(model);
   if (!rig.ok) return [];
   const fps = 30;
@@ -638,9 +684,17 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
   };
   gait('SlowWalk', GAITS.slow, speeds.slow);
   gait('Walk', GAITS.walk, speeds.walk);
+  gait('FastWalk', GAITS.fast, speeds.fastWalk);
   gait('Run', GAITS.run, speeds.run);
   gait('CrouchWalk', GAITS.crouch, speeds.crouch, 1);
 
+  // Standing still for a while: a look down the lane, and back. Played over the idle, not instead
+  // of it, so the breathing never stops.
+  clips.push(rig.clip('IdleLook', 4.2, 20, keyed([[0, STAND], [0.9, LOOK_LEFT], [1.9, LOOK_LEFT], [2.8, LOOK_RIGHT], [3.5, LOOK_RIGHT], [4.2, STAND]])));
+  // Turning on the spot: the weight goes onto one foot and the other steps round. The model's
+  // rotation is the controller's business; this is only what the body does while it happens.
+  clips.push(rig.clip('TurnLeft', 0.7, fps, keyed([[0, STAND], [0.25, PIVOT_LEFT], [0.5, PIVOT_LEFT], [0.7, STAND]])));
+  clips.push(rig.clip('TurnRight', 0.7, fps, keyed([[0, STAND], [0.25, PIVOT_RIGHT], [0.5, PIVOT_RIGHT], [0.7, STAND]])));
   clips.push(rig.clip('Pickup', 1.4, fps, keyed([[0, STAND], [0.55, REACH_DOWN], [0.8, REACH_DOWN], [1.15, HOLD], [1.4, STAND]])));
   clips.push(rig.clip('Interact', 1.0, fps, keyed([[0, STAND], [0.38, REACH_OUT], [0.62, REACH_OUT], [1.0, STAND]])));
   const { namaste, bow } = fitNamaste(rig, model);

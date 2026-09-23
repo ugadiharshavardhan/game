@@ -7,7 +7,7 @@ import type { Input } from '../core/Input';
 import type { Physics } from '../core/Physics';
 import type { InteractionActor } from '../interaction/IInteractable';
 import type { ShelterActor } from '../shelter/ShelterManager';
-import { type PlayerAction, PlayerAnimation } from './PlayerAnimation';
+import { type PlayerAction, CharacterAnimationController } from './CharacterAnimationController';
 import { PlayerAudio } from './PlayerAudio';
 import { PlayerController } from './PlayerController';
 import { buildProceduralClips } from './proceduralClips';
@@ -21,7 +21,7 @@ import { PlayerState, PlayerStateId } from './PlayerState';
 export class Player implements InteractionActor, ShelterActor, CameraTarget {
   readonly state = new PlayerState();
   readonly controller: PlayerController;
-  readonly animation: PlayerAnimation;
+  readonly animation: CharacterAnimationController;
   readonly audio: PlayerAudio;
   readonly root = new Group();
   private readonly unsubscribe: () => void;
@@ -29,6 +29,10 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   private readonly materials: Material[] = [];
   private hiddenIndoors = false;
   private cameraFade = 1;
+  /** Where the hem is, relative to the body: (x, z) lag and (y) lift. */
+  private readonly clothSway = { value: new Vector3() };
+  private clothPhase = 0;
+  private readonly config: PlayerConfig;
 
   constructor(
     model: Object3D,
@@ -42,7 +46,8 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
     spawnYaw: number,
   ) {
     this.input = input;
-    prepareMaterials(model);
+    this.config = config;
+    prepareMaterials(model, this.clothSway);
     model.traverse((o) => {
       if (o instanceof Mesh) this.materials.push(...(Array.isArray(o.material) ? o.material : [o.material]));
     });
@@ -54,8 +59,14 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
     // devotee.glb carries no animation: make its clips from its skeleton (proceduralClips.ts).
     const all = clips.length
       ? clips
-      : buildProceduralClips(model, { slow: config.slowWalkSpeed, walk: config.walkSpeed, run: config.runSpeed, crouch: config.crouchSpeed });
-    this.animation = new PlayerAnimation(model, all, config);
+      : buildProceduralClips(model, {
+          slow: config.slowWalkSpeed,
+          walk: config.walkSpeed,
+          fastWalk: config.fastWalkSpeed,
+          run: config.runSpeed,
+          crouch: config.crouchSpeed,
+        });
+    this.animation = new CharacterAnimationController(model, all, config);
     if (this.animation.missingClips.length && import.meta.env.DEV) {
       console.warn(`[player] missing animation clips: ${this.animation.missingClips.join(', ')}`);
     }
@@ -94,6 +105,11 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   get gait(): 'normal' | 'run' | 'sneak' {
     const s = this.state.value;
     return s === PlayerStateId.Running ? 'run' : s === PlayerStateId.Sneaking ? 'sneak' : 'normal';
+  }
+
+  /** What the body is doing, for the network and anyone else who asks. */
+  get movementState() {
+    return this.animation.movementState;
   }
 
   /** Fades the character out as the camera closes in, so it never renders the inside of the head. */
@@ -158,8 +174,29 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   update(dt: number, cameraYaw: number): void {
     this.controller.update(dt, this.input, cameraYaw);
     this.syncModel();
-    this.animation.update(dt, this.controller.planarSpeed, this.controller.crouched, this.controller.airborne);
+    // Asked to come most of the way round from a standstill: the body takes a step rather than
+    // rotating on the spot like a turret.
+    if (this.controller.turnedInPlace !== 0) this.animation.turnInPlace(this.controller.turnedInPlace);
+    this.animation.updateMovementAnimation(dt, this.controller.planarSpeed, this.controller.crouched, this.controller.airborne);
+    this.swayCloth(dt);
     this.audio.update(this.controller, this.state.value === PlayerStateId.Hidden, dt);
+  }
+
+  /** The hem: pushed back by the walk, swung by the stride, and settled when standing still. */
+  private swayCloth(dt: number): void {
+    const c = this.config;
+    const speed = this.controller.planarSpeed;
+    const travel = Math.min(speed / c.runSpeed, 1);
+    this.clothPhase += dt * (2 + travel * 7);
+    // Against the direction of travel (the model faces +z in its own frame), with a little swing.
+    const target = this.clothSway.value;
+    const back = -travel * CLOTH_SHADER.reach;
+    const swing = Math.sin(this.clothPhase) * CLOTH_SHADER.reach * 0.45 * travel;
+    const lift = travel * CLOTH_SHADER.reach * 0.35;
+    const k = 1 - Math.exp(-dt / 0.09);
+    target.x += (swing - target.x) * k;
+    target.y += (back - target.y) * k;
+    target.z += (lift - target.z) * k;
   }
 
   dispose(): void {
@@ -178,7 +215,39 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
  * Per-material fixes for the exported character: hair/brow/lash cards use alpha-tested
  * cut-outs (sorting-free), cloth is double-sided, everything casts and receives shadows.
  */
-function prepareMaterials(model: Object3D): void {
+/**
+ * The kurta's hem lags behind the person wearing it.
+ *
+ * Not cloth simulation — five instructions in the vertex shader. Everything below the waist is
+ * pushed backward against the direction of travel and swung a little side to side in time with
+ * the stride, fading to nothing at the waist. It costs one uniform and reads, at a glance, as a
+ * garment rather than paint.
+ */
+const CLOTH_SHADER = {
+  waist: 1.02,
+  hem: 0.78,
+  /** How far the hem may travel, in metres. */
+  reach: 0.055,
+};
+
+function patchCloth(material: Material, sway: { value: Vector3 }): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uClothSway = sway;
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform vec3 uClothSway;\nvoid main() {')
+      .replace(
+        '#include <skinning_vertex>',
+        `#include <skinning_vertex>
+        float hem = clamp( ( ${CLOTH_SHADER.waist.toFixed(2)} - transformed.y ) / ${(CLOTH_SHADER.waist - CLOTH_SHADER.hem).toFixed(2)}, 0.0, 1.0 );
+        transformed.xz += uClothSway.xy * hem * hem;
+        transformed.y -= uClothSway.z * hem * hem;`,
+      );
+  };
+  material.customProgramCacheKey = () => 'cloth-sway';
+  material.needsUpdate = true;
+}
+
+function prepareMaterials(model: Object3D, sway: { value: Vector3 }): void {
   model.traverse((o) => {
     if (!(o instanceof Mesh)) return;
     o.castShadow = true;
@@ -193,7 +262,10 @@ function prepareMaterials(model: Object3D): void {
         m.side = 2; // DoubleSide
         m.depthWrite = true;
       }
-      if (/Cloth/.test(m.name)) m.side = 2;
+      if (/Cloth/.test(m.name)) {
+        m.side = 2;
+        patchCloth(m, sway);
+      }
       if (std.metalness !== undefined) std.metalness = 0;
       if (std.roughness !== undefined) {
         std.roughness = /Skin/.test(m.name) ? 0.55 : /Eyes/.test(m.name) ? 0.15 : /Hair/.test(m.name) ? 0.5 : 0.85;

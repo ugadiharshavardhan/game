@@ -24,7 +24,7 @@ import { MoonManager } from './moon/MoonManager';
 import { DEFAULT_MOON_CONFIG, type MoonCycleConfig } from './moon/MoonState';
 import { DEFAULT_NIGHT_CONFIG, NightClock, type NightConfig } from './night/NightClock';
 import { RunTracker } from './run/RunTracker';
-import { PlayerAction } from './player/PlayerAnimation';
+import { PlayerAction } from './player/CharacterAnimationController';
 import type { ScriptedCamera, ShelterActor, ShelterCamera } from './shelter/ShelterManager';
 import type { World, WorldServices } from './world/World';
 

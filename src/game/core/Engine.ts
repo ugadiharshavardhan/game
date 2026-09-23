@@ -185,6 +185,7 @@ export class Engine {
       : buildProceduralClips(gltf.scene, {
           slow: DEFAULT_PLAYER_CONFIG.slowWalkSpeed,
           walk: DEFAULT_PLAYER_CONFIG.walkSpeed,
+          fastWalk: DEFAULT_PLAYER_CONFIG.fastWalkSpeed,
           run: DEFAULT_PLAYER_CONFIG.runSpeed,
           crouch: DEFAULT_PLAYER_CONFIG.crouchSpeed,
         });
@@ -201,6 +202,10 @@ export class Engine {
     );
     this.cameraRig = new ThirdPersonCamera(this.camera, this.player, this.input, this.physics, DEFAULT_CAMERA_CONFIG);
     if (this.pendingCameraSettings) this.cameraRig.setUserSettings(this.pendingCameraSettings);
+    // Footsteps: the synthesised surfaces, and somewhere to ask what is underfoot.
+    this.player.audio.useSounds(sounds);
+    const feet = this.player.feet;
+    this.player.audio.surface = () => world.surfaceAt?.(feet) ?? 'dirt';
     gameplay.start(world, this.player, this.cameraRig, this.camera);
     void world.itemIcons?.then((icons) => {
       if (!this.disposed) EventBus.emit('ui:item-icons', { icons });

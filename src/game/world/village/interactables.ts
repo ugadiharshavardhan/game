@@ -13,7 +13,7 @@ import { describeStacks, stillNeeded } from '../../../shared/items';
 import type { SoundKey } from '../../audio/SoundFx';
 import type { IInteractable, PromptText } from '../../interaction/IInteractable';
 import type { InventorySystem } from '../../inventory/InventorySystem';
-import { PlayerAction } from '../../player/PlayerAnimation';
+import { PlayerAction } from '../../player/CharacterAnimationController';
 import type { DoorPoint } from './solids';
 import type { VillagerDef } from './types';
 

@@ -6,6 +6,8 @@ export interface PlayerConfig {
   // Speeds (m/s)
   slowWalkSpeed: number;
   walkSpeed: number;
+  /** Between a walk and a run: the pace of someone who has somewhere to be. */
+  fastWalkSpeed: number;
   runSpeed: number;
   crouchSpeed: number;
   /** Below this planar speed the player counts as standing still. */
@@ -21,6 +23,13 @@ export interface PlayerConfig {
   turnSmoothTime: number;
   runTurnSmoothTime: number;
   faceTargetTime: number;
+  /**
+   * Turning costs speed: at a right angle or more, the player keeps this fraction of it. Running
+   * into a 180° turn becomes a wide, decelerating arc instead of a pivot on the spot.
+   */
+  turnSlowdown: number;
+  /** Beyond this much of a turn while standing still, the character takes a step round. */
+  turnInPlaceDeg: number;
 
   // Gravity (m/s²)
   gravity: number;
@@ -48,6 +57,8 @@ export interface PlayerConfig {
   // Animation
   /** Seconds for locomotion blend weights to settle. */
   blendTime: number;
+  /** Roughly this often, a player standing still shifts their weight and looks about. */
+  idleVariationSeconds: number;
   /** Cross-fade into and out of one-shot actions. */
   actionFadeTime: number;
   minMotionSpeed: number;
@@ -69,6 +80,7 @@ export interface PlayerConfig {
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   slowWalkSpeed: 1.2,
   walkSpeed: 2.2,
+  fastWalkSpeed: 3.3,
   runSpeed: 5.0,
   crouchSpeed: 1.4,
   idleThreshold: 0.1,
@@ -80,6 +92,8 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   turnSmoothTime: 0.1,
   runTurnSmoothTime: 0.16,
   faceTargetTime: 0.15,
+  turnSlowdown: 0.45,
+  turnInPlaceDeg: 95,
 
   gravity: -20,
   maxFallSpeed: -30,
@@ -98,6 +112,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   maxSlopeDegrees: 45,
 
   blendTime: 0.12,
+  idleVariationSeconds: 14,
   actionFadeTime: 0.18,
   minMotionSpeed: 0.7,
   maxMotionSpeed: 1.35,
@@ -118,9 +133,10 @@ export function validatePlayerConfig(c: PlayerConfig): string[] {
   if ([c.slowWalkSpeed, c.walkSpeed, c.runSpeed, c.crouchSpeed].some((s) => s <= 0)) {
     errors.push('Speeds must be positive.');
   }
-  if (!(c.slowWalkSpeed < c.walkSpeed && c.walkSpeed < c.runSpeed)) {
-    errors.push('Speeds must increase: slow walk < walk < run.');
+  if (!(c.slowWalkSpeed < c.walkSpeed && c.walkSpeed < c.fastWalkSpeed && c.fastWalkSpeed < c.runSpeed)) {
+    errors.push('Speeds must increase: slow walk < walk < fast walk < run.');
   }
+  if (c.turnSlowdown <= 0 || c.turnSlowdown > 1) errors.push('Turn slowdown must be a fraction of speed kept (0–1].');
   if (c.acceleration <= 0 || c.deceleration <= 0) errors.push('Acceleration must be positive.');
   if (c.gravity >= 0) errors.push('Gravity must be negative.');
   if (c.jumpSpeed <= 0) errors.push('Jump speed must be positive.');

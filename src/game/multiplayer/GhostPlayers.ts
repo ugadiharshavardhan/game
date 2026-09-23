@@ -31,10 +31,12 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import type { RemotePeer } from '../../shared/multiplayer';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { PeerLink } from './PeerLink';
-import { PlayerAnimation } from '../player/PlayerAnimation';
+import { CharacterAnimationController } from '../player/CharacterAnimationController';
 
 /** How solid a teammate looks: enough to read, never enough to hide the village behind them. */
 const OPACITY = 0.58;
+/** Within this, a teammate's animation runs every frame; beyond it, at fifteen a second. */
+const FULL_RATE = 18;
 /** Name tags stop being drawn past this, in metres. */
 const TAG_FAR = 34;
 const TAG_FADE = 22;
@@ -44,12 +46,14 @@ interface Ghost {
   playerId: string;
   root: Group;
   model: Object3D;
-  animation: PlayerAnimation;
+  animation: CharacterAnimationController;
   materials: MeshStandardMaterial[];
   tag: Sprite;
   tagTexture: CanvasTexture;
   last: Vector3;
   name: string;
+  /** Time owed to the mixer, for teammates whose animation runs at a lower rate. */
+  lag: number;
 }
 
 export class GhostPlayers {
@@ -95,12 +99,30 @@ export class GhostPlayers {
       ghost.root.position.set(peer.x, peer.y, peer.z);
       ghost.root.rotation.y = peer.yaw;
       ghost.last.set(peer.x, peer.y, peer.z);
-      // Their animation is driven by how fast they are actually travelling, so a ghost's feet
-      // match its motion however the packets arrive.
-      const speed = dt > 0 ? Math.min(moved / dt, this.config.runSpeed * 1.2) : 0;
-      ghost.animation.update(dt, peer.state === 'idle' ? 0 : speed, peer.state === 'sneaking', peer.state === 'jumping');
-
       const distance = Math.hypot(peer.x - this.cameraAt.x, peer.z - this.cameraAt.z);
+
+      // A teammate reaching for a flower plays the same one-shot the local player would; the
+      // network says *what* they are doing, never how the body should do it.
+      if (peer.state === 'interacting' && !ghost.animation.isPlayingAction) {
+        ghost.animation.playInteract(null, () => {});
+      }
+      // Their animation is driven by how fast they are actually travelling, so a ghost's feet
+      // match its motion however the packets arrive. Their state decides only the things
+      // speed cannot: standing still, sneaking, and being airborne.
+      const speed = dt > 0 ? Math.min(moved / dt, this.config.runSpeed * 1.2) : 0;
+      // Far away, the mixer runs at half rate: nobody can see the difference at twenty metres,
+      // and skinning is the most expensive thing a ghost does.
+      ghost.lag += dt;
+      if (distance < FULL_RATE || ghost.lag > 1 / 15) {
+        ghost.animation.updateMovementAnimation(
+          ghost.lag,
+          peer.state === 'idle' ? 0 : speed,
+          peer.state === 'sneaking',
+          peer.state === 'jumping',
+        );
+        ghost.lag = 0;
+      }
+
       const fade = peer.presence * (distance > TAG_FAR ? 0 : 1);
       for (const m of ghost.materials) m.opacity = OPACITY * peer.presence;
       // The tag stays a readable size at any distance, and bows out before it becomes clutter.
@@ -141,12 +163,13 @@ export class GhostPlayers {
       playerId: peer.playerId,
       root,
       model,
-      animation: new PlayerAnimation(model, this.clips, this.config),
+      animation: new CharacterAnimationController(model, this.clips, this.config),
       materials,
       tag: sprite,
       tagTexture: texture,
       last: new Vector3(peer.x, peer.y, peer.z),
       name: peer.displayName,
+      lag: 0,
     };
     this.ghosts.set(peer.playerId, ghost);
     return ghost;

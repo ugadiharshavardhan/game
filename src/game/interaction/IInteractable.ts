@@ -6,7 +6,7 @@
  */
 import type { Collider } from '@dimforge/rapier3d-compat';
 import type { Vector3 } from 'three';
-import type { PlayerAction } from '../player/PlayerAnimation';
+import type { PlayerAction } from '../player/CharacterAnimationController';
 import type { SoundKey } from '../audio/SoundFx';
 
 export type InteractableKind = 'item' | 'house' | 'temple' | 'npc';

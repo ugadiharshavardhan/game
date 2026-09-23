@@ -3,7 +3,7 @@ import { MathUtils, Vector3 } from 'three';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { Input } from '../core/Input';
 import { groups, Layer, PLAYER_QUERY, type Physics } from '../core/Physics';
-import { deriveLocomotionState, shouldJump, smoothDamp, smoothDampAngle, stepSpeed, targetSpeed } from './locomotion';
+import { deriveLocomotionState, shouldJump, smoothDamp, smoothDampAngle, stepSpeed, targetSpeed, turnSpeedFactor } from './locomotion';
 import type { PlayerState } from './PlayerState';
 
 const UP = new Vector3(0, 1, 0);
@@ -28,6 +28,14 @@ export class PlayerController {
   /** Feet off the ground: the animation blends to the airborne pose and locomotion reads Jumping. */
   airborne = false;
   crouched = false;
+  /**
+   * Radians between the way the character is facing and the way the player is asking to go —
+   * read by the animation for the step it takes when turning on the spot, and by the speed itself,
+   * because turning costs you.
+   */
+  turnError = 0;
+  /** Set for one frame when the turn was big enough that a person would step round it. */
+  turnedInPlace = 0;
   height: number;
   private readonly body: RigidBody;
   readonly collider: Collider;
@@ -99,7 +107,14 @@ export class PlayerController {
     let wishZ = Math.cos(cameraYaw) * my + Math.sin(cameraYaw) * mx;
     const magnitude = Math.min(Math.hypot(mx, my), 1);
 
-    let target = targetSpeed(c, { magnitude, run: input.run, slow: input.slow, crouched: this.crouched });
+    let target = targetSpeed(c, {
+      magnitude,
+      run: input.run,
+      slow: input.slow,
+      crouched: this.crouched,
+      // A thumb or a stick chooses its own pace; a key is a switch.
+      analogue: input.device !== 'keyboard',
+    });
     let remaining = Infinity;
     if (this.script) {
       // Walk to the point, easing in over the last half metre; stand up first if crouched.
@@ -111,6 +126,24 @@ export class PlayerController {
       wishZ = remaining > 1e-3 ? dz / remaining : 0;
       target = remaining < 0.02 ? 0 : this.script.speed * Math.min(1, 0.35 + remaining / 0.5);
     }
+    // How far round the player is asking the character to come, before anything moves.
+    this.turnedInPlace = 0;
+    if (wishX * wishX + wishZ * wishZ > 1e-4) {
+      const wanted = Math.atan2(wishX, wishZ);
+      let error = (wanted - this.yaw) % (Math.PI * 2);
+      if (error > Math.PI) error -= Math.PI * 2;
+      if (error < -Math.PI) error += Math.PI * 2;
+      this.turnError = error;
+      // Turning costs speed: a run into a hairpin becomes an arc, never a pivot at full pelt.
+      target *= turnSpeedFactor(c, error);
+      // Standing still and asked to come most of the way round: take a step rather than spin.
+      if (this.planarSpeed < c.walkSpeed * 0.4 && Math.abs(error) > c.turnInPlaceDeg * (Math.PI / 180)) {
+        this.turnedInPlace = Math.sign(error);
+      }
+    } else {
+      this.turnError = 0;
+    }
+
     const control = this.grounded ? 1 : c.airControl;
     this.planarSpeed = stepSpeed(this.planarSpeed, target, c.acceleration * control, c.deceleration * control, dt);
 
@@ -118,7 +151,10 @@ export class PlayerController {
 
     if (wishX * wishX + wishZ * wishZ > 1e-4) {
       this.moveDir.set(wishX, 0, wishZ).normalize();
-      const smooth = this.planarSpeed > c.walkSpeed * 1.1 ? c.runTurnSmoothTime : c.turnSmoothTime;
+      // Faster means a wider turn: the smoothing eases out with speed rather than switching at a
+      // threshold, so there is no frame where the character snaps from one turn rate to another.
+      const t = Math.min(Math.max((this.planarSpeed - c.walkSpeed) / Math.max(c.runSpeed - c.walkSpeed, 1e-3), 0), 1);
+      const smooth = c.turnSmoothTime + (c.runTurnSmoothTime - c.turnSmoothTime) * t;
       this.yaw = smoothDampAngle(this.yaw, Math.atan2(this.moveDir.x, this.moveDir.z), this.turnVelocity, smooth, dt);
     }
 

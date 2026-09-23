@@ -7,7 +7,7 @@ import type { SoundKey } from '../audio/SoundFx';
 import { Physics } from '../core/Physics';
 import { InventorySystem } from '../inventory/InventorySystem';
 import { PujaItem, type PujaItemVisual } from '../items/PujaItem';
-import { PlayerAction } from '../player/PlayerAnimation';
+import { PlayerAction } from '../player/CharacterAnimationController';
 import type { OfferingSpotDef } from '../world/village/types';
 import type { IInteractable, InteractionActor, PromptText } from './IInteractable';
 import { InteractionSystem } from './InteractionSystem';

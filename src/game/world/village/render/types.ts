@@ -57,6 +57,8 @@ export interface VillageVisuals {
   itemIcons?: Promise<Partial<Record<ItemId, string>>>;
   /** The closing puja's petals, sparks and lamps, when this renderer has them. */
   puja?: PujaCeremony;
+  /** What the terrain is painted with at a point, when this renderer has terrain. */
+  surfaceAt?(x: number, z: number): { road: number; soil: number; paving: number; lush: number };
   update(dt: number, frame: FrameInfo): void;
   dispose(): void;
 }

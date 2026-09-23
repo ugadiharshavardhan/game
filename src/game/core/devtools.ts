@@ -16,7 +16,7 @@ import type { MoonStateName } from '../../shared/types';
 import type { ItemId } from '../../shared/items';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import type { Gameplay } from '../Gameplay';
-import type { PlayerAction } from '../player/PlayerAnimation';
+import type { PlayerAction } from '../player/CharacterAnimationController';
 import type { Player } from '../player/Player';
 import type { World } from '../world/World';
 import type { Input } from './Input';

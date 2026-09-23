@@ -27,7 +27,9 @@ export type SoundKey =
   | 'bag-close'
   | 'bark'
   | 'jump'
-  | 'land';
+  | 'land'
+  | 'step-stone'
+  | 'step-dirt';
 
 const VOLUME: Record<SoundKey, number> = {
   collect: 0.35,
@@ -49,6 +51,8 @@ const VOLUME: Record<SoundKey, number> = {
   bark: 0.45,
   jump: 0.3,
   land: 0.5,
+  'step-stone': 0.5,
+  'step-dirt': 0.45,
 };
 
 /**
@@ -76,6 +80,8 @@ const SEND: Record<SoundKey, number> = {
   bark: WET.room,
   jump: WET.dry,
   land: WET.dry,
+  'step-stone': WET.dry,
+  'step-dirt': WET.dry,
 };
 
 /**
@@ -104,6 +110,8 @@ const DRIFT: Record<SoundKey, number> = {
   bark: 0.06,
   jump: 0.05,
   land: 0.06,
+  'step-stone': 0.05,
+  'step-dirt': 0.06,
 };
 
 /** Sounds layered on top of a pickup: every item gets the chime plus its own material. */
@@ -302,6 +310,10 @@ const RECIPES: Record<SoundKey, (rate: number) => Float32Array> = {
   jump: (rate) => mix(noiseBurst(rate, 0.16, (t) => Math.sin(Math.min(t / 0.16, 1) * Math.PI) ** 1.5, (t) => 900 + 2600 * t, 1.1, 61), thump(rate, 150, 110, 0.06, 62), 0, 0.25),
   // Back on it: a soft thud through the knees and a slap of cloth settling.
   land: (rate) => mix(thump(rate, 105, 62, 0.22, 63), noiseBurst(rate, 0.14, (t) => Math.exp(-t / 0.05), () => 1500, 0.9, 64), 0, 0.5),
+  // A sandal on temple stone: a bright slap with a short, hard tail.
+  'step-stone': (rate) => mix(noiseBurst(rate, 0.09, (t) => Math.exp(-t / 0.012), (t) => 5200 - 9000 * t, 1.1, 71), thump(rate, 210, 150, 0.09, 72), 0, 0.5),
+  // Dry earth: duller, softer, with the grit in it.
+  'step-dirt': (rate) => mix(noiseBurst(rate, 0.12, (t) => Math.exp(-t / 0.02), (t) => 2100 - 2600 * t, 0.9, 73), thump(rate, 140, 95, 0.12, 74), 0, 0.6),
   // A village dog: one bark, throat and air together, with the pitch falling off the end of it.
   bark: (rate) => {
     const voice = partials(rate, 0.22, [[310, 1, 0.055], [620, 0.45, 0.04], [930, 0.22, 0.03], [1500, 0.1, 0.02]], 0.006, 2.5);

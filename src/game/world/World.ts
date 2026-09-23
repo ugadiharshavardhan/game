@@ -19,6 +19,9 @@ export interface WorldServices {
   playSound(key: SoundKey, volume?: number): void;
 }
 
+/** What is underfoot: it decides the footstep, and nothing else. */
+export type FootSurface = 'grass' | 'dirt' | 'stone' | 'wood';
+
 /** The sky, as the world's own systems (lighting, ambience, villagers, dogs) read it. */
 export interface MoonFrame {
   state: MoonStateName;
@@ -77,6 +80,8 @@ export interface World {
   isCovered?(): boolean;
   /** Metres to the nearest shelter door, as the crow flies. */
   shelterDistance?(p: Vector3): number;
+  /** What the player is standing on, for the sound their feet make. */
+  surfaceAt?(p: Vector3): FootSurface;
   /** Plays the puja's closing sequence, then calls `done`. Returns a way to cut it short. */
   pujaSequence?(stage: PujaStage, done: () => void): (() => void) | void;
   /**

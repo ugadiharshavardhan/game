@@ -30,7 +30,10 @@ about the rules is compiled into the client.
 | `LOBBY_TIMEOUT_MIN` | 30 | A lobby nobody starts is forgotten |
 | `SYNC_HZ` | 10 | Position updates a second |
 | `TEAM_SCORE_COUNT` | 0 (all) | How many members' scores make the team score |
-| `DATA_FILE` | `server/data/boards.json` | Where the leaderboards are kept |
+| `DATA_FILE` | `server/data/boards.json` | File fallback when Supabase is not configured |
+| `VITE_SUPABASE_URL` | — | Supabase project URL (also used by the client) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | — | Publishable/anon key; boards use Supabase when set |
+| `SUPABASE_SERVICE_ROLE_KEY` | — | Preferred on the session host for board writes (bypasses RLS) |
 
 ### Deploying it somewhere public
 
