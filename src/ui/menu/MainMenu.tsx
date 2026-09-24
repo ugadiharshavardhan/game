@@ -108,9 +108,20 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
             <div className="mb-4 flex justify-end">
               <UserButton />
             </div>
+            {team && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => setPanel('lobby')}
+                  className="w-full rounded-xl border border-lamp-400/60 bg-lamp-400/20 px-6 py-3.5 font-display text-lg text-lamp-200 transition hover:bg-lamp-400/30 focus:outline-none focus-visible:ring-4 focus-visible:ring-lamp-400/40 active:scale-[0.98]"
+                >
+                  Return to Team Lobby ({team.team.code})
+                </button>
+              </div>
+            )}
             <Primary onClick={onPlaySolo}>Play solo</Primary>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <Secondary onClick={() => setPanel('create')}>Create team</Secondary>
+              <Secondary onClick={() => setPanel('create')}>{team ? 'Team Lobby' : 'Create team'}</Secondary>
               <Secondary onClick={() => setPanel('join')}>Join team</Secondary>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">

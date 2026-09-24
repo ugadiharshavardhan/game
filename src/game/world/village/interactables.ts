@@ -201,7 +201,7 @@ export class PandalDarshan implements IInteractable {
     return {
       verb: 'Darshan',
       mobileVerb: 'DARSHAN',
-      detail: 'View Ganesh 3D Model',
+      detail: 'Pray to Shree Ganesha',
       enabled: true,
     };
   }
@@ -215,8 +215,8 @@ export class PandalDarshan implements IInteractable {
   }
 
   interact(): void {
-    EventBus.emit('ui:ganesh-modal', { open: true });
-    EventBus.emit('ui:toast', { text: 'Ganpati Bappa Morya! 🙏', tone: 'good' });
+    EventBus.emit('ui:toast', { text: 'Ganpati Bappa Morya! 🙏 Divine blessings received.', tone: 'good' });
   }
 }
+
 

@@ -26,16 +26,32 @@ export function AuthBridge() {
     const email = user?.primaryEmailAddress?.emailAddress ?? null;
     const displayName = user?.fullName?.trim() || user?.firstName?.trim() || null;
 
-    setJwtAuth(id ? () => getTokenRef.current() : null, id, email, displayName);
-    setAccessTokenProvider(id ? () => getTokenRef.current() : null);
+    const getClerkToken = async () => {
+      try {
+        const t = await getTokenRef.current({ template: 'supabase' });
+        if (t) return t;
+      } catch {
+        // Fall back to standard session token
+      }
+      try {
+        return await getTokenRef.current();
+      } catch {
+        return null;
+      }
+    };
+
+    setJwtAuth(id ? getClerkToken : null, id, email, displayName);
+    setAccessTokenProvider(id ? getClerkToken : null);
 
     if (typeof window !== 'undefined') {
       (window as unknown as { __clerkUserId?: string | null }).__clerkUserId = id;
     }
 
     if (id) {
+      const immediateName = displayName || 'Devotee';
+      teams.setUser(id, immediateName);
       void profiles.load(id).then(() => {
-        const name = profiles.profile.get()?.displayName || displayName || 'Devotee';
+        const name = profiles.profile.get()?.displayName || immediateName;
         teams.setUser(id, name);
       });
     } else {
@@ -46,3 +62,4 @@ export function AuthBridge() {
 
   return null;
 }
+
