@@ -1,9 +1,8 @@
 /**
  * The whole of signing in: Google via Clerk, then a display name (and optional campus).
  *
- * Clerk owns the account. The game still keeps a local player profile (id, name, campus) so
- * multiplayer and boards keep working the same way — when signed in, the profile id is stable
- * across devices via Clerk's user id.
+ * Clerk owns the account; the name and campus are saved to the player's row in `profiles`,
+ * keyed by the Clerk user id, so they follow the account to every device.
  */
 import { Show, SignInButton, UserButton, useUser } from '@clerk/react';
 import { useEffect, useState } from 'react';
@@ -12,21 +11,25 @@ import { CAMPUSES } from './campuses';
 interface NameGateProps {
   initialName?: string;
   initialCampus?: string;
-  onEnter: (name: string, campus: string, clerkUserId?: string) => void;
+  /** The saved profile is still being read. */
+  loading?: boolean;
+  saving?: boolean;
+  error?: string | null;
+  onEnter: (name: string, campus: string) => void;
 }
 
-export function NameGate({ initialName = '', initialCampus = '', onEnter }: NameGateProps) {
+export function NameGate({ initialName = '', initialCampus = '', loading = false, saving = false, error = null, onEnter }: NameGateProps) {
   const { isLoaded, user } = useUser();
   const googleName = user?.fullName?.trim() || user?.firstName?.trim() || '';
   const [name, setName] = useState(initialName || googleName);
   const [campus, setCampus] = useState(initialCampus);
-  const ready = name.trim().length > 0;
+  const ready = name.trim().length > 0 && !saving;
 
   useEffect(() => {
     if (!initialName && googleName) setName(googleName);
   }, [googleName, initialName]);
 
-  if (!isLoaded) {
+  if (!isLoaded || (user && loading)) {
     return <p className="text-center text-sm text-dusk-400">Loading…</p>;
   }
 
@@ -62,7 +65,7 @@ export function NameGate({ initialName = '', initialCampus = '', onEnter }: Name
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (ready) onEnter(name, campus, user?.id);
+            if (ready) onEnter(name, campus);
           }}
         >
           <label className="block text-[10px] uppercase tracking-[0.3em] text-dusk-400" htmlFor="player-name">
@@ -96,12 +99,13 @@ export function NameGate({ initialName = '', initialCampus = '', onEnter }: Name
             ))}
           </datalist>
 
+          {error && <p className="mt-4 text-xs text-[#d98a7a]">{error}</p>}
           <button
             type="submit"
             disabled={!ready}
             className="mt-7 w-full rounded-xl bg-lamp-400 px-6 py-3.5 font-display text-lg text-night-950 transition hover:bg-lamp-200 disabled:cursor-not-allowed disabled:bg-night-700 disabled:text-dusk-400 active:scale-[0.98]"
           >
-            Enter the village
+            {saving ? 'Saving…' : 'Enter the village'}
           </button>
         </form>
       </Show>

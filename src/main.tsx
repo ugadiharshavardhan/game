@@ -2,6 +2,7 @@ import { ClerkProvider } from '@clerk/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { AuthBridge } from './ui/AuthBridge';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -18,6 +19,7 @@ if (!publishableKey) {
 createRoot(rootElement).render(
   <StrictMode>
     <ClerkProvider publishableKey={publishableKey} afterSignOutUrl="/">
+      <AuthBridge />
       <App />
     </ClerkProvider>
   </StrictMode>,

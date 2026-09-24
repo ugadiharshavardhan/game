@@ -38,7 +38,7 @@ const EMPTY_BAG: InventorySnapshot = {
 const initialDevice = (): InputDevice => (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
 
 /** One set of services for the whole app, made before the first render. */
-const { profiles, teams, session, sync, scores, net } = services();
+const { profiles, teams, session, sync, scores } = services();
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('menu');
@@ -58,12 +58,16 @@ export default function App() {
   const [runKey, setRunKey] = useState(0);
   const [portrait, setPortrait] = useState(false);
   const [options, setOptions] = useState<GameOptions>({});
+  /** The team round the current run belongs to; null for solo and tutorial runs. */
+  const [runSessionId, setRunSessionId] = useState<string | null>(null);
+  const runSessionRef = useRef<string | null>(null);
   // What the session subscription needs to know without re-subscribing every render.
   const stateRef = useRef<AppState>('menu');
   const settingsRef = useRef(settings);
 
   const profile = useObservable(profiles.profile);
-  const team = useObservable(teams.team);
+  const team = useObservable(teams.snapshot);
+  const liveSession = useObservable(session.session);
 
   useEffect(() => {
     stateRef.current = appState;
@@ -78,7 +82,7 @@ export default function App() {
   useGameEvent('ui:cinematic', ({ active }) => setCinematic(active));
 
   const startRun = useCallback(
-    (next: GameOptions) => {
+    (next: GameOptions, sessionId: string | null = null) => {
       setPaused(false);
       setBag(EMPTY_BAG);
       setPrompt(null);
@@ -86,13 +90,15 @@ export default function App() {
       setCinematic(false);
       scores.clear();
       setOptions(next);
+      runSessionRef.current = sessionId;
+      setRunSessionId(sessionId);
       setRunKey((k) => k + 1);
       setAppState('playing');
     },
     [],
   );
 
-  // A finished run: the referee scores it, and its word is what the results screen shows.
+  // A finished run: the database scores it, and its word is what the results screen shows.
   useGameEvent('run:completed', (r) => {
     setResult(r);
     setBagOpen(false);
@@ -100,20 +106,17 @@ export default function App() {
     setMapOpen(false);
     mapOpenRef.current = false;
     setAppState('results');
-    profiles.recordRun(r.breakdown.total);
-    if (profile) scores.submit(profile.playerId, session.session.get()?.sessionId ?? null, r);
+    const sessionId = runSessionRef.current;
+    if (sessionId) session.finish(sessionId);
+    if (profile) void scores.submit(sessionId, r);
   });
 
-  // The host pressed start: everyone in the lobby walks into the same village. This listens to
-  // the session rather than deriving it, because "a session began" is an event, not a state.
-  useEffect(
-    () =>
-      session.session.subscribe((live) => {
-        if (!live || stateRef.current !== 'menu') return;
-        startRun({ session: session.clock() ?? undefined, link: sync, quality: settingsRef.current.quality });
-      }),
-    [startRun],
-  );
+  // The host pressed start (or this player refreshed mid-round): everyone on the menu walks into
+  // the team's round, in the same village under the same moon.
+  useEffect(() => {
+    if (appState !== 'menu' || !liveSession) return;
+    startRun({ session: session.clock() ?? undefined, link: sync, quality: settingsRef.current.quality }, liveSession.id);
+  }, [appState, liveSession, startRun]);
 
   const openBag = useCallback((open: boolean) => {
     if (open === bagOpenRef.current) return;
@@ -154,6 +157,10 @@ export default function App() {
     mapOpenRef.current = false;
     setMapOpen(false);
     setCinematic(false);
+    // Quitting a team round part-way: the round no longer waits for this player.
+    if (stateRef.current === 'playing' && runSessionRef.current) void session.leave();
+    runSessionRef.current = null;
+    setRunSessionId(null);
     setAppState('menu');
     sync.clear();
   }, []);
@@ -310,7 +317,7 @@ export default function App() {
           result={result}
           profile={profile}
           team={team}
-          connected={net.status.get() === 'online'}
+          sessionId={runSessionId}
           onPlayAgain={() => startRun(options)}
           onMainMenu={quitToMenu}
         />

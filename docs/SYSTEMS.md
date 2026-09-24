@@ -257,32 +257,41 @@ remounts the engine from nothing.
 A run can also end without a puja, when 05:00 arrives first. Those runs carry
 `stats.pujaComplete: false`; they are scored for everything they gathered, but the puja's own
 1200 and the bonus for being quick both go to zero, and the screen says *Dawn broke first* rather
-than *Puja complete*. The server's validator knows the difference: it only demands the puja's 25
+than *Puja complete*. The database's validator knows the difference: it only demands the puja's 25
 offerings of a run that claims to have finished one.
 
 ## Playing together
 
 One village, four devotees, four separate pujas.
 
-`src/net/Authority.ts` is the referee: teams and their codes, lobbies and their rules, the shared
-session, the ghost traffic, and both leaderboards — with no transport in it at all. The real
-server (`server/index.ts`, Node + `ws`) wraps it in a WebSocket; with no server running,
-`LocalTransport` wraps *the same class* in a BroadcastChannel so the tabs of one browser play by
-identical rules. One set of rules, two ways of reaching it.
+Postgres is the referee. `supabase/migrations/` holds the tables (`profiles`, `teams`,
+`team_members`, `game_sessions`, `session_players`, `player_game_results`, `team_results`), Row
+Level Security (clients may only *read* their own teams' rows), and the functions every write goes
+through (`create_team`, `join_team`, `leave_team`, `set_ready`, `start_game`,
+`submit_player_result`, …). Each function is one transaction that locks what it needs, checks the
+rules, and either succeeds completely or changes nothing — so two players can never take the last
+place at once, and a code is only shown once its team row is committed. Identity is the Clerk
+user id, verified by Supabase third-party auth and read from the JWT's `sub`.
+
+Each team has a private Realtime channel, `team:<id>`, that only its active members may join. Row
+changes are announced on it by triggers as a bare "something changed"; clients then refetch the
+team snapshot (`get_my_team()`), so Realtime is never the source of truth. The same channel
+carries Presence (who is online) and the ghosts' positions, which are never written to Postgres.
 
 | Brief (service) | Here | What it is |
 | --- | --- | --- |
-| `PlayerProfileService` | `src/net/PlayerProfileService.ts` | A name, a campus, an id made in this browser |
-| `TeamService` | `src/net/TeamService.ts` | Create, join by code, leave, who is in it |
-| `LobbyService` | `src/net/LobbyService.ts` | Ready, start, and why the button is greyed out |
-| `MultiplayerSessionService` | `src/net/MultiplayerSessionService.ts` | The session's moon seed and clock |
-| `PlayerSyncService` | `src/net/PlayerSyncService.ts` | 10 Hz out, interpolation in |
+| `PlayerProfileService` | `src/net/PlayerProfileService.ts` | The player's `profiles` row |
+| `TeamService` | `src/net/TeamService.ts` | Create, join by code, leave, ready, start; the team snapshot |
+| `TeamChannel` | `src/net/TeamChannel.ts` | The team's private Realtime channel and Presence |
+| `useTeam()` | `src/ui/hooks/useTeam.ts` | The one team state every screen reads |
+| `MultiplayerSessionService` | `src/net/MultiplayerSessionService.ts` | The round's moon seed and clock, heartbeat |
+| `PlayerSyncService` | `src/net/PlayerSyncService.ts` | 6 Hz out, interpolation in |
 | `GhostPlayerVisual` | `src/game/multiplayer/GhostPlayers.ts` | Teammates, translucent, animated |
 | `ScoreService` | `src/net/ScoreService.ts` | Submitting a run, hearing what it was worth |
 | `LeaderboardService` | `src/net/LeaderboardService.ts` | The two boards |
 | `GameStateService` | `src/App.tsx` | menu ⇄ playing ⇄ results, and which run is starting |
 
-**The same moon.** The server hands out a seed and the moment the village opened; every client
+**The same moon.** The round has a seed and the moment the village opened; every client
 seeds its own `MoonManager` with them and winds it forward to catch up
 (`MoonManager.windForward`). Not one moon message is ever sent, and everybody's sky agrees.
 
@@ -294,11 +303,13 @@ behind anybody. At most three are drawn, and none while they are indoors.
 **Everything else is individual.** The bag, exposure, shelter, the offerings given, the time, the
 score: each player's own. Collecting a flower takes it from *your* world, not your friend's.
 
-**What the client is not trusted with.** Its score, its time, its rank. The server recomputes
-every score from the run's statistics with the same weights (`shared/score.ts`), refuses runs that
-could not have happened (a puja finished in ten seconds, a bag that never walked anywhere, more
-moonlight than the run was long), refuses a second submission for the same session, and keeps only
-a player's best. A team's score is its members' best runs added up.
+**What the client is not trusted with.** Its score, its time, its rank. `submit_player_result`
+recomputes every score from the run's statistics with the same weights (`shared/score.ts`, mirrored
+in SQL), refuses runs that could not have happened (a puja finished in ten seconds, a bag that
+never walked anywhere, more moonlight than the run was long, a run longer than its round), checks
+the player is really in that round, and refuses a second submission for it. Every accepted run is
+kept; the players' board shows each player's best. A team's round score is the sum of its members'
+runs in that round (`team_results`), and the team board shows each team's best round.
 
 ## The tutorial
 

@@ -1,7 +1,6 @@
 import { UserButton } from '@clerk/react';
 import { useEffect, useState } from 'react';
 import type { GameSettings } from '../../shared/types';
-import { ClerkSessionBridge } from '../ClerkSessionBridge';
 import { services, useObservable } from '../services';
 import { Boards } from './Boards';
 import { HowToPlay } from './HowToPlay';
@@ -29,19 +28,22 @@ interface MainMenuProps {
  * in, nothing asks to be looked at.
  */
 export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainMenuProps) {
-  const { profiles, teams, net } = services();
+  const { profiles, teams } = services();
   const profile = useObservable(profiles.profile);
-  const team = useObservable(teams.team);
-  const networked = useObservable(net.mode) === 'socket';
-  const [chosen, setPanel] = useState<MenuPanel>(profile ? 'home' : 'name');
+  const profileState = useObservable(profiles.state);
+  const profileSaving = useObservable(profiles.saving);
+  const profileError = useObservable(profiles.error);
+  const team = useObservable(teams.snapshot);
+  const [chosen, setPanel] = useState<MenuPanel>('home');
+  // Nobody gets past the gate until they are signed in and the database has their profile.
+  const gated = profileState !== 'ready' || !profile;
   // Being in a team *is* the lobby: whichever way you got there — made it, joined it, or came
   // back to it after a run — the panel that was taking you there gives way to it.
-  const panel: MenuPanel = team && (chosen === 'home' || chosen === 'create' || chosen === 'join') ? 'lobby' : chosen;
-
-  // The connection is opened only once a player has a name to announce.
-  useEffect(() => {
-    if (profile) teams.announce(profile);
-  }, [profile, teams]);
+  const panel: MenuPanel = gated
+    ? 'name'
+    : team && (chosen === 'home' || chosen === 'create' || chosen === 'join')
+      ? 'lobby'
+      : chosen;
 
   const home = () => setPanel('home');
 
@@ -61,7 +63,6 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
     // The menu scrolls: on a phone held sideways the tall panels (how to play, the boards) are
     // taller than the screen, and a clipped panel puts its Back button out of reach.
     <main className="safe-top safe-bottom relative flex h-full w-full flex-col items-center overflow-y-auto overflow-x-hidden bg-night-950 px-6">
-      <ClerkSessionBridge onSignedOut={() => setPanel('name')} />
       <Backdrop />
 
       {dismissible && (
@@ -87,14 +88,15 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
 
         {panel === 'name' && (
           <NameGate
+            // Remounts once the saved profile arrives, so the form starts from it.
+            key={`${profileState}:${profile?.id ?? ''}`}
             initialName={profile?.displayName}
             initialCampus={profile?.campus}
-            onEnter={(name, campus, clerkUserId) => {
-              const p = profiles.signIn(name, campus, clerkUserId);
-              if (p) {
-                teams.announce(p);
-                home();
-              }
+            loading={profileState === 'loading'}
+            saving={profileSaving}
+            error={profileError}
+            onEnter={async (name, campus) => {
+              if (await profiles.save(name, campus)) home();
             }}
           />
         )}
@@ -125,11 +127,6 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
                 change
               </button>
             </p>
-            {!networked && (
-              <p className="mt-2 text-center text-[10px] leading-relaxed text-dusk-400/70">
-                No session server: teams play across tabs on this device.
-              </p>
-            )}
           </nav>
         )}
 

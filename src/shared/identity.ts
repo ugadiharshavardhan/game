@@ -1,24 +1,12 @@
 /**
- * Names and codes: the whole of the game's "account system".
+ * Names and codes.
  *
- * A player is an id made in their own browser, a display name, and optionally a campus. Ids and
- * team codes avoid the letters and digits people confuse when reading a code to a friend across a
- * courtyard (no O/0, I/1, S/5), because a team code is read aloud far more often than it is typed.
+ * Team codes are made by the database (`private.random_code`), never here: six characters from an
+ * alphabet without the letters and digits people confuse when reading a code aloud (no I/1, O/0).
+ * This file only tidies what a player typed before it is sent.
  */
-const ALPHABET = 'ABCDEFGHJKLMNPQRTUVWXYZ23456789';
-
-const pick = (n: number, random: () => number): string =>
-  Array.from({ length: n }, () => ALPHABET[Math.floor(random() * ALPHABET.length)]).join('');
-
-/** `PLY_8F72K91` */
-export function makePlayerId(random: () => number = Math.random): string {
-  return `PLY_${pick(7, random)}`;
-}
-
-/** `MOON-7K4P` — four letters everyone can read out. */
-export function makeTeamCode(random: () => number = Math.random): string {
-  return `MOON-${pick(4, random)}`;
-}
+export const TEAM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const TEAM_CODE_LENGTH = 6;
 
 /** What the player typed, tidied: trimmed, collapsed, and short enough to draw over a head. */
 export function cleanName(raw: string): string {
@@ -29,13 +17,11 @@ export function cleanCampus(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, 24);
 }
 
-/** Accepts `moon-7k4p`, `MOON 7K4P`, ` 7k4p ` — all the ways a code gets typed. */
+/** Accepts ` ms7k2p `, `MS7-K2P`, `ms 7k 2p` — all the ways a code gets typed. */
 export function normaliseTeamCode(raw: string): string {
-  const letters = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const body = letters.startsWith('MOON') ? letters.slice(4) : letters;
-  return body ? `MOON-${body}` : '';
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, TEAM_CODE_LENGTH);
 }
 
 export function isTeamCode(code: string): boolean {
-  return /^MOON-[A-Z0-9]{4}$/.test(code);
+  return new RegExp(`^[${TEAM_CODE_ALPHABET}]{${TEAM_CODE_LENGTH}}$`).test(code);
 }

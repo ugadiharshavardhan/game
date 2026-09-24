@@ -7,68 +7,34 @@ How to build it, how to serve it, and what to check before handing over the link
 ```bash
 npm install
 npm run build          # typecheck + production bundle into dist/
-npm run server         # serves dist/ and the multiplayer socket on :8787
+npm run preview        # serve dist/ locally
 ```
 
-One process serves both the game and the sessions, so there is one URL and no CORS. Open
-`http://localhost:8787`; the health check is `/healthz` and the socket is `/session`.
-
-Without the server the game still plays: solo runs work, and teams fall back to the same-device
-transport (tabs of one browser find each other), which is enough to demonstrate the whole flow.
+The game is a static build: Vercel serves `dist/` (`vercel.json`), and Supabase is the whole
+backend — Postgres for teams, rounds, results and both boards; Realtime for lobbies, presence and
+ghosts. There is no game server to run.
 
 ### Configuration
 
-Everything the contest might want to change is an environment variable on the server — nothing
-about the rules is compiled into the client.
-
-| Variable | Default | What it does |
+| Variable | Where | What it is |
 | --- | --- | --- |
-| `PORT` | 8787 | HTTP and WebSocket port |
-| `MIN_PLAYERS` | 1 | Players needed before a lobby can start |
-| `MAX_PLAYERS` | 4 | Team size |
-| `REQUIRE_READY` | true | Everyone must press Ready |
-| `LOBBY_TIMEOUT_MIN` | 30 | A lobby nobody starts is forgotten |
-| `SYNC_HZ` | 10 | Position updates a second |
-| `TEAM_SCORE_COUNT` | 0 (all) | How many members' scores make the team score |
-| `DATA_FILE` | `server/data/boards.json` | File fallback when Supabase is not configured |
-| `VITE_SUPABASE_URL` | — | Supabase project URL (also used by the client) |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | — | Publishable/anon key; boards use Supabase when set |
-| `SUPABASE_SERVICE_ROLE_KEY` | — | Preferred on the session host for board writes (bypasses RLS) |
+| `VITE_SUPABASE_URL` | Browser build | Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser build | Publishable key only — never the service-role/secret key |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Browser build | Clerk publishable key |
 
-### Deploying it somewhere public
+Set the same three in Vercel → Project → Settings → Environment Variables, and make sure every
+environment points at the **same** Supabase project (two projects means two separate sets of
+teams). Team size (4) and the lobby rules live in the database (`teams.max_members`, the
+functions in `supabase/migrations/`), not in the client.
 
-Everything needed is in the repository; pick whichever of these you have an account for.
+### Supabase
 
-**A container, anywhere** — `Dockerfile` builds the game and runs the server on `$PORT`:
-
-```bash
-docker build -t moonlight-seva .
-docker run -p 8787:8787 -e MAX_PLAYERS=4 moonlight-seva
-```
-
-**Fly.io** — `fly.toml` is written (Mumbai region, a 1 GB volume for the boards, `/healthz`
-checks):
-
-```bash
-fly launch --no-deploy     # once, to claim the app name
-fly volumes create data --size 1
-fly deploy
-```
-
-**Render** — `render.yaml` is a blueprint: New → Blueprint → point it at this repository. It
-mounts a disk for the leaderboards and health-checks `/healthz`.
-
-**GitHub Pages** — `.github/workflows/pages.yml` publishes the *static* game on every push to
-main (Settings → Pages → Source: GitHub Actions, once). Pages cannot run the session server, so
-that build is solo play, the tutorial, and teams across tabs of one device. To make the Pages
-build talk to a deployed server, set the repository variable `SESSION_SERVER` to
-`wss://your-server/session` — the workflow passes it to the build.
-
-**By hand** — the server is one Node process with one dependency (`ws`) and a JSON file for
-state. Upload `dist/`, `server/`, `src/` (the server reads the shared rules from source) and
-`package.json`; run `node --experimental-strip-types server/index.ts` on Node 22.6+; put TLS in
-front of it (the client picks `wss://` by itself on an `https://` page); point `DATA_FILE` at a
-persistent disk.
+1. Apply `supabase/migrations/` in filename order (Supabase CLI `supabase db push`, or the SQL
+   editor). They are idempotent where possible and never delete historical results.
+2. Clerk → [Connect with Supabase](https://dashboard.clerk.com/setup/supabase): activate, so session
+   tokens carry `role: authenticated`.
+3. Supabase → Authentication → Third-Party Auth → Add Clerk with the Clerk instance domain.
+4. Check: sign in, create a team, and see the row in Table Editor → `teams`.
 
 ## Release checklist
 
@@ -110,17 +76,14 @@ persistent disk.
 
 **Multiplayer**
 
-- [x] Two players, two browsers, one village, one moon (verified over the real socket)
+- [ ] Two players, two browsers, one team code, one village, one moon (over Supabase)
 - [x] Ghost teammates with name tags, no collision
-- [x] Scores recomputed on the server; impossible runs refused; duplicates refused
+- [x] Scores recomputed in Postgres; impossible runs refused; duplicates refused (verified in SQL)
 - [x] Individual and team boards, kept apart
 
 **Still to do before the contest**
 
-- [ ] Deploy to a public URL and put the link in the submission (`fly deploy`, Render blueprint,
-      or the Pages workflow — all four routes are prepared above; this needs an account, which is
-      the only reason it is not done)
+- [ ] Deploy to a public URL (Vercel) and put the link in the submission
 - [ ] Play a full run on a real phone and a mid-range laptop. Open the game with **`?perf=1`** and
       read the overlay: frame rate, draw calls, triangles, the quality profile it chose, and heap.
       `npm run dev` prints a LAN address for exactly this.
-- [ ] Decide `MAX_PLAYERS` and `MIN_PLAYERS` for the contest's rules
