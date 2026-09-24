@@ -1,12 +1,13 @@
 /**
  * The whole of signing in: Google via Clerk, then a display name (and optional campus).
  *
- * Clerk owns the account; the name and campus are saved to the player's row in `profiles`,
+ * Clerk owns the account; the name and campus are saved to the player's profile,
  * keyed by the Clerk user id, so they follow the account to every device.
  */
 import { Show, SignInButton, UserButton, useUser } from '@clerk/react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CAMPUSES } from './campuses';
+import { PrivacyPolicyModal, TermsOfServiceModal } from './LegalModals';
 
 interface NameGateProps {
   initialName?: string;
@@ -21,13 +22,12 @@ interface NameGateProps {
 export function NameGate({ initialName = '', initialCampus = '', loading = false, saving = false, error = null, onEnter }: NameGateProps) {
   const { isLoaded, user } = useUser();
   const googleName = user?.fullName?.trim() || user?.firstName?.trim() || '';
-  const [name, setName] = useState(initialName || googleName);
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const name = typedName !== null ? typedName : (initialName || googleName);
   const [campus, setCampus] = useState(initialCampus);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const ready = name.trim().length > 0 && !saving;
-
-  useEffect(() => {
-    if (!initialName && googleName) setName(googleName);
-  }, [googleName, initialName]);
 
   if (!isLoaded || (user && loading)) {
     return <p className="text-center text-sm text-dusk-400">Loading…</p>;
@@ -49,7 +49,23 @@ export function NameGate({ initialName = '', initialCampus = '', loading = false
           </button>
         </SignInButton>
         <p className="mt-3 text-center text-[11px] leading-relaxed text-dusk-400/80">
-          Google sign-in via Clerk. Email sign-in is also available in the modal.
+          Google sign-in via Clerk. By continuing, you agree to our{' '}
+          <button
+            type="button"
+            onClick={() => setTermsModalOpen(true)}
+            className="underline decoration-lamp-400/60 font-semibold text-lamp-300 hover:text-lamp-100 transition"
+          >
+            Terms of Service
+          </button>{' '}
+          and{' '}
+          <button
+            type="button"
+            onClick={() => setPrivacyModalOpen(true)}
+            className="underline decoration-lamp-400/60 font-semibold text-lamp-300 hover:text-lamp-100 transition"
+          >
+            Privacy Policy
+          </button>
+          .
         </p>
       </Show>
 
@@ -76,7 +92,7 @@ export function NameGate({ initialName = '', initialCampus = '', loading = false
             autoFocus
             value={name}
             maxLength={16}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setTypedName(e.target.value)}
             placeholder="Harsha"
             className="mt-2 w-full rounded-xl border border-night-700 bg-night-950/70 px-4 py-3 font-display text-lg text-lamp-200 placeholder:text-dusk-400/50 focus:border-lamp-400 focus:outline-none"
           />
@@ -107,8 +123,31 @@ export function NameGate({ initialName = '', initialCampus = '', loading = false
           >
             {saving ? 'Saving…' : 'Enter the village'}
           </button>
+
+          <p className="mt-4 text-center text-[11px] text-dusk-400">
+            By entering, you agree to the{' '}
+            <button
+              type="button"
+              onClick={() => setTermsModalOpen(true)}
+              className="underline decoration-lamp-400/60 font-semibold text-lamp-300 hover:text-lamp-100 transition"
+            >
+              Terms of Service
+            </button>{' '}
+            and{' '}
+            <button
+              type="button"
+              onClick={() => setPrivacyModalOpen(true)}
+              className="underline decoration-lamp-400/60 font-semibold text-lamp-300 hover:text-lamp-100 transition"
+            >
+              Privacy Policy
+            </button>
+          </p>
         </form>
       </Show>
+
+      {/* Connected Terms & Privacy Modals */}
+      <TermsOfServiceModal isOpen={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+      <PrivacyPolicyModal isOpen={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>
   );
 }
