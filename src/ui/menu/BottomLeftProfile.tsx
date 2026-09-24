@@ -83,7 +83,7 @@ export function BottomLeftProfile({ profile, onUpdateProfile, onSignOut }: Botto
                 <p className="text-xs text-dusk-400">
                   {profile.gender ? `Gender: ${profile.gender}` : ''} {profile.campus ? `· ${profile.campus}` : ''}
                 </p>
-                <p className="mt-1 font-mono text-[9px] text-dusk-400/70 truncate">ID: {profile.playerId}</p>
+                <p className="mt-1 font-mono text-[9px] text-dusk-400/70 truncate">ID: {profile.id}</p>
               </div>
             </div>
 
