@@ -32,6 +32,7 @@ import type { RemotePeer } from '../../shared/multiplayer';
 import type { PlayerConfig } from '../config/playerConfig';
 import type { PeerLink } from './PeerLink';
 import { CharacterAnimationController } from '../player/CharacterAnimationController';
+import { PostureMachine, type PostureKind } from '../player/posture';
 
 /** How solid a teammate looks: enough to read, never enough to hide the village behind them. */
 const OPACITY = 0.58;
@@ -54,7 +55,13 @@ interface Ghost {
   name: string;
   /** Time owed to the mixer, for teammates whose animation runs at a lower rate. */
   lag: number;
+  /** Their sitting and sleeping, played through the same transitions as the local player's. */
+  posture: PostureMachine;
+  /** The state last frame, to catch a take-off and a landing. */
+  lastState: string;
 }
+
+const postureOf = (state: string): PostureKind => (state === 'sitting' ? 'sitting' : state === 'sleeping' ? 'sleeping' : 'standing');
 
 export class GhostPlayers {
   private readonly scene: Scene;
@@ -69,6 +76,8 @@ export class GhostPlayers {
 
   /** More teammates than this are not drawn at once (the contest's teams are four). */
   private readonly maxGhosts: number;
+  /** Animation rate for teammates beyond FULL_RATE metres; lowered by the performance manager. */
+  farHz = 15;
 
   constructor(scene: Scene, source: Object3D, clips: AnimationClip[], config: PlayerConfig, camera: Camera, link: PeerLink, maxGhosts = 3) {
     this.scene = scene;
@@ -106,20 +115,24 @@ export class GhostPlayers {
       if (peer.state === 'interacting' && !ghost.animation.isPlayingAction) {
         ghost.animation.playInteract(null, () => {});
       }
+      // Sitting down, lying down and getting up: the network says which, the ghost's own machine
+      // plays the way there, so a teammate never pops from standing to lying.
+      ghost.posture.follow(postureOf(peer.state));
+      ghost.posture.update(dt);
+      ghost.animation.setPosture(ghost.posture.phase);
+      if (peer.state === 'jumping' && ghost.lastState !== 'jumping') ghost.animation.launched();
+      if (peer.state !== 'jumping' && ghost.lastState === 'jumping') ghost.animation.landed(4, peer.state === 'running');
+      ghost.lastState = peer.state;
       // Their animation is driven by how fast they are actually travelling, so a ghost's feet
       // match its motion however the packets arrive. Their state decides only the things
       // speed cannot: standing still, sneaking, and being airborne.
-      const speed = dt > 0 ? Math.min(moved / dt, this.config.runSpeed * 1.2) : 0;
-      // Far away, the mixer runs at half rate: nobody can see the difference at twenty metres,
-      // and skinning is the most expensive thing a ghost does.
+      const still = peer.state === 'idle' || ghost.posture.locksMovement;
+      const speed = dt > 0 && !still ? Math.min(moved / dt, this.config.runSpeed * 1.2) : 0;
+      // Far away, the mixer runs at a quarter of the rate (less on a struggling device): nobody can
+      // see the difference at twenty metres, and skinning is the most expensive thing a ghost does.
       ghost.lag += dt;
-      if (distance < FULL_RATE || ghost.lag > 1 / 15) {
-        ghost.animation.updateMovementAnimation(
-          ghost.lag,
-          peer.state === 'idle' ? 0 : speed,
-          peer.state === 'sneaking',
-          peer.state === 'jumping',
-        );
+      if (distance < FULL_RATE || ghost.lag > 1 / this.farHz) {
+        ghost.animation.updateMovementAnimation(ghost.lag, speed, peer.state === 'sneaking', peer.state === 'jumping');
         ghost.lag = 0;
       }
 
@@ -170,6 +183,8 @@ export class GhostPlayers {
       last: new Vector3(peer.x, peer.y, peer.z),
       name: peer.displayName,
       lag: 0,
+      posture: new PostureMachine(),
+      lastState: peer.state,
     };
     this.ghosts.set(peer.playerId, ghost);
     return ghost;

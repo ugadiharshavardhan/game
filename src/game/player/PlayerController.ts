@@ -7,6 +7,13 @@ import { deriveLocomotionState, shouldJump, smoothDamp, smoothDampAngle, stepSpe
 import type { PlayerState } from './PlayerState';
 
 const UP = new Vector3(0, 1, 0);
+const DOWN = new Vector3(0, -1, 0);
+/** How far a body lying down reaches from where the feet stood: heels ahead, head behind (m). */
+const LIE_FEET = 0.9;
+const LIE_HEAD = 0.8;
+const LIE_DIR = new Vector3();
+const LIE_BACK = new Vector3();
+const LIE_ORIGIN = new Vector3();
 
 /**
  * Camera-relative kinematic motor on Rapier's character controller:
@@ -36,6 +43,10 @@ export class PlayerController {
   turnError = 0;
   /** Set for one frame when the turn was big enough that a person would step round it. */
   turnedInPlace = 0;
+  /** One frame: the feet just left the ground under their own power. */
+  launched = false;
+  /** One frame: the feet just came down, at this downward speed (m/s); 0 otherwise. */
+  landedAt = 0;
   height: number;
   private readonly body: RigidBody;
   readonly collider: Collider;
@@ -145,8 +156,13 @@ export class PlayerController {
     }
 
     const control = this.grounded ? 1 : c.airControl;
-    this.planarSpeed = stepSpeed(this.planarSpeed, target, c.acceleration * control, c.deceleration * control, dt);
+    // Sitting or lying down stops the feet at once rather than sliding into the pose.
+    const brake = locked && !this.state.isBusy && !this.script ? 4 : 1;
+    this.planarSpeed = stepSpeed(this.planarSpeed, target, c.acceleration * control, c.deceleration * control * brake, dt);
 
+    const wasAirborne = this.airborne;
+    const fallSpeed = -this.verticalSpeed;
+    this.launched = false;
     this.jump(dt, input, locked);
 
     if (wishX * wishX + wishZ * wishZ > 1e-4) {
@@ -176,6 +192,7 @@ export class PlayerController {
     // animation must not flicker to the airborne pose every time the player climbs a stair.
     this.airborne = !this.grounded && (this.verticalSpeed > 0.01 || this.sinceGrounded > c.coyoteTime);
     this.launchLock = Math.max(this.launchLock - dt, 0);
+    this.landedAt = wasAirborne && !this.airborne && this.grounded ? Math.max(fallSpeed, 0) : 0;
     if (this.grounded && this.verticalSpeed < 0) this.verticalSpeed = 0;
 
     // Walking into a wall should not look like running on the spot.
@@ -213,6 +230,7 @@ export class PlayerController {
       this.launchLock = 0.12;
       this.grounded = false;
       this.airborne = true;
+      this.launched = true;
     } else if (this.grounded && this.launchLock <= 0) {
       // Pressed gently into the floor: the controller needs a downward push to stay snapped.
       this.verticalSpeed = -1;
@@ -265,6 +283,45 @@ export class PlayerController {
     this.sincePressed = Infinity;
     this.airborne = false;
     this.setSnapping(true);
+  }
+
+  /** Out of a crouch if there is headroom; true when standing (already, or now). */
+  standFromCrouch(): boolean {
+    if (!this.crouched) return true;
+    if (!this.canStand()) return false;
+    this.crouched = false;
+    return true;
+  }
+
+  /**
+   * Whether a body lying on its back fits here, head behind and feet ahead along the facing, and
+   * how the ground under it tilts. Rays along the body at ankle and knee height find walls and
+   * props; rays down under the head and the heels find the floor. A step, a ledge or a slope
+   * steeper than a few degrees is no bed: the body would hang in the air or go into the ground.
+   */
+  lieSpace(): { ok: true; pitch: number } | { ok: false; reason: 'blocked' | 'slope' } {
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const fwd = LIE_DIR.set(fx, 0, fz);
+    const origin = LIE_ORIGIN;
+    const blocked = (h: number, dir: Vector3, len: number) =>
+      this.physics.castRay(origin.set(this.feet.x, this.feet.y + h, this.feet.z), dir, len, this.collider) !== null;
+    for (const h of [0.22, 0.55]) {
+      if (blocked(h, fwd, LIE_FEET)) return { ok: false, reason: 'blocked' };
+      if (blocked(h, LIE_BACK.copy(fwd).negate(), LIE_HEAD)) return { ok: false, reason: 'blocked' };
+    }
+    const side = LIE_BACK.set(fz, 0, -fx);
+    if (blocked(0.22, side, 0.32) || blocked(0.22, side.negate(), 0.32)) return { ok: false, reason: 'blocked' };
+    const floorAt = (along: number) => {
+      origin.set(this.feet.x + fx * along, this.feet.y + 0.45, this.feet.z + fz * along);
+      const hit = this.physics.castRay(origin, DOWN, 0.9, this.collider);
+      return hit === null ? null : origin.y - hit;
+    };
+    const head = floorAt(-LIE_HEAD * 0.85);
+    const heels = floorAt(LIE_FEET * 0.85);
+    if (head === null || heels === null) return { ok: false, reason: 'slope' };
+    if (Math.abs(head - this.feet.y) > 0.12 || Math.abs(heels - this.feet.y) > 0.12) return { ok: false, reason: 'slope' };
+    return { ok: true, pitch: Math.atan2(heels - head, (LIE_HEAD + LIE_FEET) * 0.85) };
   }
 
   private toggleCrouch(): void {

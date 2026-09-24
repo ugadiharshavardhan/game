@@ -1,16 +1,17 @@
 /**
- * Where everyone is, ten times a second.
+ * Where everyone is, several times a second — over the team's private Realtime channel, never
+ * through Postgres (positions are transient; only results are worth keeping).
  *
  * Outgoing: the local player's position, heading and animation state, rounded to the centimetre
  * and the degree, sent only when something has actually changed — a player standing still costs
- * nothing at all.
+ * one message a second.
  *
- * Incoming: every teammate's last two positions, played back a fifth of a second behind real time
- * and interpolated between them. That delay is what turns a stream of packets into a person
+ * Incoming: every teammate's last two positions, played back a little behind real time and
+ * interpolated between them. That delay is what turns a stream of packets into a person
  * walking; without it a ghost on a phone's connection teleports.
  */
-import type { PeerState, RemotePeer, TeamState } from '../shared/multiplayer';
-import type { NetConnection } from './NetConnection';
+import type { PeerState, RemotePeer, TeamSnapshot } from '../shared/multiplayer';
+import type { TeamChannel } from './TeamChannel';
 
 export interface LocalPeerState {
   x: number;
@@ -27,49 +28,45 @@ interface Track {
   displayName: string;
   from: PeerState;
   to: PeerState;
-  /** Local clock when `to` arrived, so playback does not depend on clocks agreeing. */
+  /** Local clock when `from` and `to` arrived, so playback does not depend on clocks agreeing. */
+  fromAt: number;
   arrivedAt: number;
   presence: number;
 }
 
-/** Played back this far behind, in milliseconds: two updates at 10 Hz. */
-const DELAY_MS = 200;
+/** Sends per second while moving. Four players at this rate stay far inside Realtime's quotas. */
+const SEND_HZ = 6;
+/** Played back this far behind, in milliseconds: about two updates. */
+const DELAY_MS = 350;
 /** Nobody heard from for this long has gone quiet: their ghost fades. */
 const QUIET_MS = 3000;
 /** And this long: they have gone. */
 const GONE_MS = 15000;
 
 export class PlayerSyncService {
-  private readonly net: NetConnection;
+  private readonly channel: TeamChannel;
   private readonly tracks = new Map<string, Track>();
   private names = new Map<string, string>();
   private last: LocalPeerState | null = null;
   private lastSentAt = 0;
   private readonly leaveListeners = new Set<(playerId: string) => void>();
 
-  constructor(net: NetConnection) {
-    this.net = net;
-    this.net.on((message) => {
-      if (message.type === 'peers') {
-        for (const peer of message.peers) this.receive(peer);
-      } else if (message.type === 'peer-left') {
-        this.tracks.delete(message.playerId);
-        for (const l of this.leaveListeners) l(message.playerId);
-      }
-    });
+  constructor(channel: TeamChannel) {
+    this.channel = channel;
+    channel.onPeer((peer) => this.receive(peer));
+    channel.onPeerLeft((playerId) => this.drop(playerId));
   }
 
-  /** Names come from the team, not from the position messages: they are sent once, not per frame. */
-  useTeam(team: TeamState | null): void {
-    this.names = new Map((team?.members ?? []).map((m) => [m.playerId, m.displayName]));
+  /** Names come from the team snapshot, not from the position messages. */
+  useTeam(snapshot: TeamSnapshot | null): void {
+    this.names = new Map((snapshot?.members ?? []).map((m) => [m.userId, m.displayName]));
     for (const track of this.tracks.values()) track.displayName = this.names.get(track.playerId) ?? track.displayName;
   }
 
   /** Called by the engine every frame; sends at the configured rate, and only on a change. */
   send(state: LocalPeerState): void {
     const now = performance.now();
-    const interval = 1000 / Math.max(this.net.config.get().syncHz, 1);
-    if (now - this.lastSentAt < interval) return;
+    if (now - this.lastSentAt < 1000 / SEND_HZ) return;
     const rounded: LocalPeerState = {
       x: Math.round(state.x * 100) / 100,
       y: Math.round(state.y * 100) / 100,
@@ -91,20 +88,28 @@ export class PlayerSyncService {
     if (still && now - this.lastSentAt < 1000) return;
     this.lastSentAt = now;
     this.last = rounded;
-    this.net.send({ type: 'sync', state: rounded });
+    this.channel.sendPeer(rounded);
   }
 
   private receive(peer: PeerState): void {
+    if (typeof peer.x !== 'number' || typeof peer.z !== 'number') return;
+    const now = performance.now();
     const existing = this.tracks.get(peer.playerId);
     const displayName = this.names.get(peer.playerId) ?? existing?.displayName ?? 'Player';
     if (!existing) {
-      this.tracks.set(peer.playerId, { playerId: peer.playerId, displayName, from: peer, to: peer, arrivedAt: performance.now(), presence: 0 });
+      this.tracks.set(peer.playerId, { playerId: peer.playerId, displayName, from: peer, to: peer, fromAt: now, arrivedAt: now, presence: 0 });
       return;
     }
     existing.from = existing.to;
+    existing.fromAt = existing.arrivedAt;
     existing.to = peer;
-    existing.arrivedAt = performance.now();
+    existing.arrivedAt = now;
     existing.displayName = displayName;
+  }
+
+  private drop(playerId: string): void {
+    if (!this.tracks.delete(playerId)) return;
+    for (const l of this.leaveListeners) l(playerId);
   }
 
   /** Everyone else, where they should be drawn right now. */
@@ -114,14 +119,13 @@ export class PlayerSyncService {
     for (const track of [...this.tracks.values()]) {
       const age = now - track.arrivedAt;
       if (age > GONE_MS) {
-        this.tracks.delete(track.playerId);
-        for (const l of this.leaveListeners) l(track.playerId);
+        this.drop(track.playerId);
         continue;
       }
       // Fade in as they arrive, and away as they go quiet, rather than blinking either way.
       const target = age > QUIET_MS ? 0 : 1;
       track.presence += (target - track.presence) * 0.08;
-      const span = Math.max(track.to.t - track.from.t, 1);
+      const span = Math.max(track.arrivedAt - track.fromAt, 1);
       const t = Math.min(Math.max((age - DELAY_MS + span) / span, 0), 1.25);
       out.push({
         playerId: track.playerId,
@@ -143,7 +147,9 @@ export class PlayerSyncService {
     return () => this.leaveListeners.delete(listener);
   }
 
+  /** Leaving the village: tell the others, and forget them. */
   clear(): void {
+    this.channel.sendPeerLeft();
     this.tracks.clear();
     this.last = null;
   }

@@ -2,6 +2,9 @@ import { Vector2 } from 'three';
 import { EventBus } from '../../shared/EventBus';
 import type { InputDevice } from '../../shared/events';
 
+/** Touch-stick deflection (0..1) ignored as a resting thumb's jitter. */
+const STICK_DEAD = 0.12;
+
 /**
  * One input model over keyboard + mouse (pointer lock), gamepad and touch.
  *
@@ -32,6 +35,12 @@ export class Input {
   /** One-frame edge: leave the ground (Space). */
   jumpPressed = false;
   interactPressed = false;
+  /** One-frame edge: sit down / stand up (X). */
+  sitPressed = false;
+  /** One-frame edge: lie down to sleep / wake up (Z). */
+  sleepPressed = false;
+  /** The on-screen RUN button is held. */
+  private touchRun = false;
   pointerLocked = false;
   touchLook = false;
   /** The device the player used last — prompts show its button. */
@@ -66,7 +75,10 @@ export class Input {
     }
     this.listen(window, 'keydown', (e) => this.onKey(e as KeyboardEvent, true));
     this.listen(window, 'keyup', (e) => this.onKey(e as KeyboardEvent, false));
-    this.listen(window, 'blur', () => this.keys.clear());
+    this.listen(window, 'blur', () => {
+      this.keys.clear();
+      this.touchRun = false;
+    });
     this.listen(document, 'mousemove', (e) => {
       if (!this.pointerLocked) return;
       this.setDevice('keyboard');
@@ -100,6 +112,12 @@ export class Input {
       EventBus.on('input:action', ({ action }) => {
         if (action === 'interact') this.interactPressed = true;
         else if (action === 'crouch') this.crouchPressed = true;
+        else if (action === 'jump') this.jumpPressed = true;
+        else if (action === 'sit') this.sitPressed = true;
+        else if (action === 'sleep') this.sleepPressed = true;
+      }),
+      EventBus.on('input:hold', ({ action, down }) => {
+        if (action === 'run') this.touchRun = down;
       }),
     );
   }
@@ -129,7 +147,7 @@ export class Input {
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
     this.move.set(x, y);
     if (this.move.lengthSq() > 1) this.move.normalize();
-    this.run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    this.run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.touchRun;
     this.slow = this.keys.has('ControlLeft') || this.keys.has('ControlRight');
 
     // Touch joystick
@@ -154,6 +172,8 @@ export class Input {
     this.interactPressed = false;
     this.recenterPressed = false;
     this.jumpPressed = false;
+    this.sitPressed = false;
+    this.sleepPressed = false;
   }
 
   releasePointer(): void {
@@ -176,6 +196,8 @@ export class Input {
       if (e.code === 'KeyC') this.crouchPressed = true;
       if (e.code === 'KeyE') this.interactPressed = true;
       if (e.code === 'Space') this.jumpPressed = true;
+      if (e.code === 'KeyX') this.sitPressed = true;
+      if (e.code === 'KeyZ') this.sleepPressed = true;
     } else {
       this.keys.delete(e.code);
     }
@@ -199,6 +221,9 @@ export class Input {
     if (edge(3)) EventBus.emit('ui:inventory-toggle'); // Y / Triangle
     if (edge(0)) this.interactPressed = true; // A / Cross
     if (edge(1)) this.crouchPressed = true; // B / Circle
+    if (edge(2)) this.jumpPressed = true; // X / Square
+    if (edge(14)) this.sitPressed = true; // D-pad left
+    if (edge(15)) this.sleepPressed = true; // D-pad right
     if (pressed[10]) this.run = true; // L3
     if (edge(11)) this.recenterPressed = true; // R3
     if (pressed[12]) this.padZoom -= 1; // D-pad up: zoom in
@@ -242,8 +267,10 @@ export class Input {
         const dx = (t.clientX - this.touchOrigin.x) / maxDeflection;
         const dy = -(t.clientY - this.touchOrigin.y) / maxDeflection;
         this.touchMove.set(dx, dy);
-        if (this.touchMove.lengthSq() > 1) this.touchMove.normalize();
-        if (this.touchMove.length() < 0.12) this.touchMove.set(0, 0);
+        // Radial dead zone, rescaled: a resting thumb's jitter is ignored, and just past it the
+        // stick starts from zero rather than jumping to 12% (a creep, then a walk, then a run).
+        const m = Math.min(this.touchMove.length(), 1);
+        this.touchMove.setLength(m < STICK_DEAD ? 0 : (m - STICK_DEAD) / (1 - STICK_DEAD));
       } else if (t.identifier === this.lookTouchId) {
         // While pinching, the look finger only feeds the spread — no accidental turning.
         if (this.pinchTouchId === null) {

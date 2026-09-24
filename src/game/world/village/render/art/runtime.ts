@@ -236,9 +236,12 @@ export class Culler {
   private timer = 0;
   /** Everything is drawn this much nearer or further, by quality. */
   private readonly scale: number;
+  /** And by how the device is coping right now (PerformanceManager), read at every check. */
+  private readonly live: { lodScale: number };
 
-  constructor(scale = 1) {
+  constructor(scale = 1, live: { lodScale: number } = { lodScale: 1 }) {
     this.scale = scale;
+    this.live = live;
   }
 
   add(o: Object3D, centre: Vector3, maxDistance: number): void {
@@ -250,10 +253,11 @@ export class Culler {
     this.timer -= dt;
     if (this.timer > 0) return;
     this.timer = 0.2;
+    const k = this.live.lodScale * this.live.lodScale;
     for (const it of this.items) {
       const dx = it.c.x - camera.x;
       const dz = it.c.z - camera.z;
-      it.o.visible = dx * dx + dz * dz < it.d2;
+      it.o.visible = dx * dx + dz * dz < it.d2 * k;
     }
   }
 }

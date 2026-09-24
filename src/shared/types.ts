@@ -30,7 +30,7 @@ export interface GameSettings {
 }
 
 /** Mirrors the engine's PlayerStateId values; duplicated here so React never imports the engine. */
-export type PlayerStateName = 'idle' | 'walking' | 'fast-walking' | 'running' | 'sneaking' | 'jumping' | 'interacting' | 'hidden';
+export type PlayerStateName = 'idle' | 'walking' | 'fast-walking' | 'running' | 'sneaking' | 'jumping' | 'interacting' | 'hidden' | 'sitting' | 'sleeping';
 
 /** The moon's cycle (see game/moon/MoonState.ts): SAFE → WARNING → RISING → ACTIVE → FADING. */
 export type MoonStateName = 'safe' | 'warning' | 'rising' | 'active' | 'fading';

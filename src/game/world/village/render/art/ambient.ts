@@ -93,11 +93,17 @@ export function build(a: ArtContext): boolean {
     const flyLevel = Math.min(Math.max((night - 0.18) * 1.8, 0), 1);
     dust.visible = dustLevel > 0.02;
     fireflies.visible = flyLevel > 0.02;
+    // A device that is struggling draws (and moves) the first part of each pool only.
+    const share = Math.min(Math.max(a.live.particles, 0), 1);
+    const dustN = Math.round(dustPool.length * share);
+    const flyN = Math.round(flyPool.length * share);
+    dust.geometry.setDrawRange(0, dustN);
+    fireflies.geometry.setDrawRange(0, flyN);
 
     if (dust.visible) {
       const pos = dust.geometry.getAttribute('position') as Float32BufferAttribute;
       const col = dust.geometry.getAttribute('color') as Float32BufferAttribute;
-      for (let i = 0; i < dustPool.length; i++) {
+      for (let i = 0; i < dustN; i++) {
         const p = dustPool[i];
         p.x += (wind.x * 0.6 + Math.sin(time * 0.6 + p.phase) * 0.12) * dt;
         p.z += (wind.z * 0.6 + Math.cos(time * 0.5 + p.phase) * 0.12) * dt;
@@ -114,7 +120,7 @@ export function build(a: ArtContext): boolean {
     if (fireflies.visible) {
       const pos = fireflies.geometry.getAttribute('position') as Float32BufferAttribute;
       const col = fireflies.geometry.getAttribute('color') as Float32BufferAttribute;
-      for (let i = 0; i < flyPool.length; i++) {
+      for (let i = 0; i < flyN; i++) {
         const p = flyPool[i];
         // A firefly's wander: a slow drift with a little steering of its own.
         p.vx += (Math.sin(time * p.rate + p.phase) * 0.4 - p.vx) * dt;

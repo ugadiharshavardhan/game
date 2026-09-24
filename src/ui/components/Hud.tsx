@@ -176,7 +176,7 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
         </div>
       )}
 
-      <InteractionPrompt device={device} />
+      <InteractionPrompt device={device} suppressed={state === 'sitting' || state === 'sleeping'} />
 
       {/* Messages, above the prompt. */}
       <div className={`safe-bottom absolute inset-x-0 flex flex-col items-center gap-1.5 px-4 ${touch ? 'bottom-40' : 'bottom-28'}`}>
@@ -234,13 +234,20 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
 
       {!touch && !locked && (
         <p className="absolute inset-x-0 bottom-8 text-center text-xs tracking-wide text-lamp-200/60">
-          Click to look around · WASD move · Shift run · Ctrl slow walk · C sneak · E interact · I bag · Wheel zoom
+          Click to look around · WASD move · Shift run · Space jump · Ctrl slow walk · C sneak · E interact · X sit · Z sleep · I bag · Wheel zoom
         </p>
       )}
 
       {/* Sneaking is worth knowing about: it keeps you out of the light. */}
       {state === 'sneaking' && !touch && (
         <p className="absolute inset-x-0 bottom-20 text-center text-[10px] uppercase tracking-[0.3em] text-dusk-400">Sneaking · low and quiet</p>
+      )}
+      {/* The phone shows these on its buttons; the keyboard and the pad need telling how to get up. */}
+      {(state === 'sitting' || state === 'sleeping') && !touch && (
+        <p className="absolute inset-x-0 bottom-20 text-center text-[10px] uppercase tracking-[0.3em] text-dusk-400">
+          {state === 'sitting' ? `Sitting · ${device === 'gamepad' ? 'D-pad ←' : 'X'} to stand` : `Sleeping… · ${device === 'gamepad' ? 'D-pad →' : 'Z'} to wake`}
+          {state === 'sleeping' && shelter ? ' · safe indoors' : ''}
+        </p>
       )}
 
       {/* Strength Depletion Modal */}

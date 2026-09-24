@@ -44,30 +44,53 @@ New players get a two-minute playable tutorial (from **How to play**): walk, col
 watch the bag fill, find a lit door, go in, watch a moonrise through the window, and come out
 again. Every step ends on something the player did.
 
-Controls: WASD / left stick move · mouse / right stick look · Shift run · Space jump · Ctrl slow walk ·
-C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
-On touch: a thumb joystick on the left, drag on the right to look, pinch zooms, and large
-COLLECT / SNEAK / bag / pause buttons; keyboard hints are hidden and a portrait phone is asked,
-once and quietly, to turn sideways.
+Controls:
+
+| Action | Keyboard / mouse | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Move | WASD / arrows | left stick | floating joystick, left half |
+| Look | mouse (pointer lock) | right stick (R3 recenters) | drag on the right half |
+| Zoom | wheel | D-pad ↑/↓ | pinch |
+| Run (hold) | Shift | L3 | hold RUN |
+| Slow walk | Ctrl | — | small stick deflection |
+| Jump | Space | X | JUMP |
+| Crouch / sneak | C | B | SNEAK |
+| Interact / enter / puja | E | A | context button |
+| Sit / stand | X | D-pad ← | SIT / STAND |
+| Sleep / wake | Z | D-pad → | SLEEP / WAKE UP |
+| Bag | I or Tab | Y | bag button |
+| Map | M | — | map button |
+| Pause | Esc / P | — | pause button |
+
+On touch, the joystick, the camera drag and the buttons all work at once, because each finger is
+tracked on its own. Buttons fire on touch-down and are at least 48 px. In portrait the game asks
+you to turn the phone sideways. While asleep, only WAKE UP is shown.
 
 ## Playing together
 
-A player types a name — no account, no password, no email — and gets an id that tells two Harshas
-apart. From the menu they can **Create team** (which prints a code like `MOON-7K4P` to share) or
-**Join team** with a friend's code. When the host starts, everyone walks into *the same village
-with the same moon*, sees their teammates as translucent ghosts with name tags, and plays their
-own puja: their own bag, their own exposure, their own shelter, their own score. Teams have their
-own leaderboard, kept separate from the players' one.
+A player signs in with Google (Clerk) and picks a display name. From the menu they can
+**Create team** (which shows a six-character code like `MS7K2P` to share) or **Join team** with a
+friend's code, from any device. When the host starts, everyone walks into *the same village with
+the same moon*, sees their teammates as translucent ghosts with name tags, and plays their own
+puja: their own bag, their own exposure, their own shelter, their own score. Teams have their own
+leaderboard, kept separate from the players' one.
 
-Scores are recomputed on the server from the run's statistics before they reach a board, so a
-modified client can change what it shows and not what is recorded.
+Supabase is the backend and the single source of truth: teams, members, rounds, every run and
+every team result live in Postgres (`supabase/migrations/`), every write is an atomic database
+function behind Row Level Security, and scores are recomputed in the database from the run's
+statistics, so a modified client can change what it shows and not what is recorded. Lobbies,
+presence and ghosts travel over a private Supabase Realtime channel per team.
 
-```bash
-npm run server     # the session server: teams, lobbies, ghosts, boards — and serves dist/
-```
+### Supabase setup (once per project)
 
-With no server running, teams fall back to the tabs of one browser, which is enough to see the
-whole flow (and to test it). See [docs/RELEASE.md](docs/RELEASE.md) for deployment.
+1. Apply `supabase/migrations/` in order (they are already applied to the project in `.env.local`).
+2. Clerk → [Connect with Supabase](https://dashboard.clerk.com/setup/supabase): activate it, so
+   Clerk session tokens carry `role: authenticated`.
+3. Supabase → Authentication → Third-Party Auth → **Add Clerk**, with the Clerk domain
+   (`<instance>.clerk.accounts.dev`, shown on the Clerk page above).
+
+Without steps 2–3 Supabase rejects the Clerk token and every team action fails with
+"Your sign-in could not be verified" (the console says why).
 
 ## Commands
 
@@ -78,13 +101,11 @@ npm test           # vitest: camera, level design, playthroughs, shelters, inter
 npm run typecheck  # tsc -b, no emit
 npm run lint       # oxlint
 npm run build      # typecheck + production build
-npm run server     # session server on :8787 (serves dist/ too)
-npm run serve      # build, then serve
-npm run preview    # serve the production build without the sessions
+npm run preview    # serve the production build
 ```
 
-Deployment is prepared four ways — a `Dockerfile`, `fly.toml`, `render.yaml`, and a GitHub Pages
-workflow for the static build. See [docs/RELEASE.md](docs/RELEASE.md).
+The game is a static build (Vercel, `vercel.json`); Supabase is the whole backend. See
+[docs/RELEASE.md](docs/RELEASE.md).
 
 Open any build with **`?perf=1`** for a small overlay showing frame rate, draw calls, triangles,
 the quality profile and heap — that is how the game gets measured on a real phone.

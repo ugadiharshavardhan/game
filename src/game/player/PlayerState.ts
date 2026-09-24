@@ -1,7 +1,8 @@
 /**
- * The player's state. Locomotion states are pushed in every frame by the controller;
- * Interacting and Hidden are explicit, lock movement, and take priority (Interacting over Hidden).
- * A scripted walk (through a doorway) also locks input, but still reads as walking.
+ * The player's state. Locomotion states are pushed in every frame by the controller; the rest are
+ * explicit and take priority, strongest first: Interacting, Hidden, Sleeping, Sitting. Sleeping and
+ * Sitting cover the whole of getting down and getting up again, so the network and the HUD see one
+ * state per posture. A scripted walk (through a doorway) also locks input, but still reads as walking.
  */
 export const PlayerStateId = {
   Idle: 'idle',
@@ -13,6 +14,8 @@ export const PlayerStateId = {
   Jumping: 'jumping',
   Interacting: 'interacting',
   Hidden: 'hidden',
+  Sitting: 'sitting',
+  Sleeping: 'sleeping',
 } as const;
 
 export type PlayerStateId = (typeof PlayerStateId)[keyof typeof PlayerStateId];
@@ -25,6 +28,7 @@ export class PlayerState {
   private interacting = false;
   private hidden = false;
   private scripted = false;
+  private posture: 'standing' | 'sitting' | 'sleeping' = 'standing';
   private readonly listeners = new Set<StateListener>();
 
   get value(): PlayerStateId {
@@ -32,6 +36,11 @@ export class PlayerState {
   }
 
   get isLocked(): boolean {
+    return this.interacting || this.hidden || this.scripted || this.posture !== 'standing';
+  }
+
+  /** Busy with something that is not a posture: an interaction, a doorway, being hidden. */
+  get isBusy(): boolean {
     return this.interacting || this.hidden || this.scripted;
   }
 
@@ -47,6 +56,13 @@ export class PlayerState {
 
   updateLocomotion(derived: PlayerStateId): void {
     this.locomotion = derived;
+    this.resolve();
+  }
+
+  setPosture(posture: 'standing' | 'sitting' | 'sleeping'): void {
+    if (posture === this.posture) return;
+    this.posture = posture;
+    if (posture === 'standing') this.locomotion = PlayerStateId.Idle;
     this.resolve();
   }
 
@@ -77,7 +93,11 @@ export class PlayerState {
       ? PlayerStateId.Interacting
       : this.hidden
         ? PlayerStateId.Hidden
-        : this.locomotion;
+        : this.posture === 'sleeping'
+          ? PlayerStateId.Sleeping
+          : this.posture === 'sitting'
+            ? PlayerStateId.Sitting
+            : this.locomotion;
     if (next === this.current) return;
     const prev = this.current;
     this.current = next;

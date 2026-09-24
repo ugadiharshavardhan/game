@@ -1,16 +1,15 @@
+import { UserButton } from '@clerk/react';
 import { useEffect, useState } from 'react';
 import type { GameSettings } from '../../shared/types';
-import { ClerkSessionBridge } from '../ClerkSessionBridge';
 import { services, useObservable } from '../services';
-import { AuthWelcomeScreen } from './AuthWelcomeScreen';
-import { BottomLeftProfile } from './BottomLeftProfile';
 import { Boards } from './Boards';
 import { HowToPlay } from './HowToPlay';
+import { NameGate } from './NameGate';
 import { PujaList } from './PujaList';
 import { Settings } from './Settings';
 import { CreateTeam, JoinTeam, TeamLobby } from './TeamPanels';
 
-export type MenuPanel = 'home' | 'auth' | 'create' | 'join' | 'lobby' | 'boards' | 'how' | 'puja' | 'settings';
+export type MenuPanel = 'home' | 'name' | 'create' | 'join' | 'lobby' | 'boards' | 'how' | 'puja' | 'settings';
 
 interface MainMenuProps {
   onPlaySolo: () => void;
@@ -23,32 +22,34 @@ interface MainMenuProps {
  * The evening of Ganesh Chaturthi, held still: the village at dusk, the devotee in the foreground,
  * the moon just clearing the trees. Everything in front of it — the name, the team, the boards —
  * is drawn over that one image, so the menu opens instantly and still looks like the game.
+ *
+ * The animation is deliberately slight: the frame drifts, the moon rises a few pixels a minute,
+ * the lamps breathe, and a handful of motes cross the foreground. Nothing blinks, nothing slides
+ * in, nothing asks to be looked at.
  */
 export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainMenuProps) {
-  const { profiles, teams, net } = services();
+  const { profiles, teams } = services();
   const profile = useObservable(profiles.profile);
-  const team = useObservable(teams.team);
-  const networked = useObservable(net.mode) === 'socket';
-  const [chosen, setPanel] = useState<MenuPanel>(profile ? 'home' : 'auth');
-
-  // If there's no profile, always show the AuthWelcomeScreen
-  const effectivePanel: MenuPanel = !profile ? 'auth' : (team && (chosen === 'home' || chosen === 'create' || chosen === 'join') ? 'lobby' : chosen);
-
-  // The connection is opened once a player has an identity to announce.
-  useEffect(() => {
-    if (profile) teams.announce(profile);
-  }, [profile, teams]);
+  const profileState = useObservable(profiles.state);
+  const profileSaving = useObservable(profiles.saving);
+  const profileError = useObservable(profiles.error);
+  const team = useObservable(teams.snapshot);
+  const [chosen, setPanel] = useState<MenuPanel>('home');
+  // Nobody gets past the gate until they are signed in and the database has their profile.
+  const gated = profileState !== 'ready' || !profile;
+  // Being in a team *is* the lobby: whichever way you got there — made it, joined it, or came
+  // back to it after a run — the panel that was taking you there gives way to it.
+  const panel: MenuPanel = gated
+    ? 'name'
+    : team && (chosen === 'home' || chosen === 'create' || chosen === 'join')
+      ? 'lobby'
+      : chosen;
 
   const home = () => setPanel('home');
 
-  const dismissible =
-    effectivePanel === 'how' ||
-    effectivePanel === 'puja' ||
-    effectivePanel === 'settings' ||
-    effectivePanel === 'boards' ||
-    effectivePanel === 'create' ||
-    effectivePanel === 'join';
-
+  // Any panel that opened from the home screen can be dismissed with Escape, whatever the height
+  // of the screen it opened on. (The name gate and a team lobby are things you are in, not on.)
+  const dismissible = panel === 'how' || panel === 'puja' || panel === 'settings' || panel === 'boards' || panel === 'create' || panel === 'join';
   useEffect(() => {
     if (!dismissible) return;
     const onKey = (event: KeyboardEvent) => {
@@ -58,41 +59,11 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
     return () => window.removeEventListener('keydown', onKey);
   }, [dismissible]);
 
-  if (effectivePanel === 'auth' || !profile) {
-    return (
-      <>
-        <ClerkSessionBridge onSignedOut={() => setPanel('auth')} />
-        <AuthWelcomeScreen
-          existingProfile={profile}
-          onEnterGame={(name, gender, character, campus, clerkUserId) => {
-            const p = profiles.signIn(name, campus, clerkUserId, gender, character);
-            if (p) {
-              teams.announce(p);
-              setPanel('home');
-            }
-          }}
-        />
-      </>
-    );
-  }
-
   return (
+    // The menu scrolls: on a phone held sideways the tall panels (how to play, the boards) are
+    // taller than the screen, and a clipped panel puts its Back button out of reach.
     <main className="safe-top safe-bottom relative flex h-full w-full flex-col items-center overflow-y-auto overflow-x-hidden bg-night-950 px-6">
-      <ClerkSessionBridge onSignedOut={() => setPanel('auth')} />
       <Backdrop />
-
-      {/* Dedicated Gaming Profile Badge in Bottom-Left */}
-      <BottomLeftProfile
-        profile={profile}
-        onUpdateProfile={(name, gender, character, campus) => {
-          const updated = profiles.updateProfile({ displayName: name, gender, character, campus });
-          if (updated) teams.announce(updated);
-        }}
-        onSignOut={() => {
-          profiles.signOut();
-          setPanel('auth');
-        }}
-      />
 
       {dismissible && (
         <button
@@ -107,7 +78,7 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
       )}
 
       <div className="relative z-10 my-auto flex w-full max-w-md shrink-0 flex-col items-center py-8">
-        <header className={`text-center transition-all duration-700 ${effectivePanel === 'home' ? 'mb-8' : 'mb-5 scale-90 opacity-80'}`}>
+        <header className={`text-center transition-all duration-700 ${panel === 'home' || panel === 'name' ? 'mb-8' : 'mb-5 scale-90 opacity-80'}`}>
           <p className="text-[10px] uppercase tracking-[0.45em] text-dusk-400">Ganesh Chaturthi</p>
           <h1 className="mt-2 font-display text-4xl leading-none text-lamp-200 drop-shadow-[0_4px_24px_rgba(0,0,0,0.55)] sm:text-5xl">Moonlight Seva</h1>
           <p className="mx-auto mt-3 max-w-xs text-sm leading-relaxed text-lamp-200/70">
@@ -115,8 +86,26 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
           </p>
         </header>
 
-        {effectivePanel === 'home' && (
+        {panel === 'name' && (
+          <NameGate
+            // Remounts once the saved profile arrives, so the form starts from it.
+            key={`${profileState}:${profile?.id ?? ''}`}
+            initialName={profile?.displayName}
+            initialCampus={profile?.campus}
+            loading={profileState === 'loading'}
+            saving={profileSaving}
+            error={profileError}
+            onEnter={async (name, campus) => {
+              if (await profiles.save(name, campus)) home();
+            }}
+          />
+        )}
+
+        {panel === 'home' && (
           <nav className="w-full max-w-sm">
+            <div className="mb-4 flex justify-end">
+              <UserButton />
+            </div>
             <Primary onClick={onPlaySolo}>Play solo</Primary>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Secondary onClick={() => setPanel('create')}>Create team</Secondary>
@@ -134,26 +123,21 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
               Playing as <span className="text-lamp-200">{profile?.displayName}</span>
               {profile?.campus ? ` · ${profile.campus}` : ''}
               {' · '}
-              <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-lamp-200" onClick={() => setPanel('auth')}>
-                change profile
+              <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-lamp-200" onClick={() => setPanel('name')}>
+                change
               </button>
             </p>
-            {!networked && (
-              <p className="mt-2 text-center text-[10px] leading-relaxed text-dusk-400/70">
-                No session server: teams play across tabs on this device.
-              </p>
-            )}
           </nav>
         )}
 
-        {effectivePanel === 'create' && <CreateTeam onBack={home} />}
-        {effectivePanel === 'join' && <JoinTeam onBack={home} />}
-        {effectivePanel === 'lobby' && <TeamLobby onLeave={home} />}
-        {effectivePanel === 'boards' && <Boards onBack={home} />}
-        {effectivePanel === 'how' && <HowToPlay onBack={home} onTutorial={onTutorial} />}
-        {effectivePanel === 'puja' && <PujaList onBack={home} />}
-        {effectivePanel === 'settings' && (
-          <Settings settings={settings} onChange={onSettings} onBack={home} playerName={profile?.displayName ?? ''} onChangeName={() => setPanel('auth')} />
+        {panel === 'create' && <CreateTeam onBack={home} />}
+        {panel === 'join' && <JoinTeam onBack={home} />}
+        {panel === 'lobby' && <TeamLobby onLeave={home} />}
+        {panel === 'boards' && <Boards onBack={home} />}
+        {panel === 'how' && <HowToPlay onBack={home} onTutorial={onTutorial} />}
+        {panel === 'puja' && <PujaList onBack={home} />}
+        {panel === 'settings' && (
+          <Settings settings={settings} onChange={onSettings} onBack={home} playerName={profile?.displayName ?? ''} onChangeName={() => setPanel('name')} />
         )}
       </div>
     </main>

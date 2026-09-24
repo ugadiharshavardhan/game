@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { PlayerProfile, TeamState } from '../../shared/multiplayer';
+import type { PlayerProfile, SessionPlayer, TeamSnapshot } from '../../shared/multiplayer';
 import type { LeaderboardEntry, RunResult } from '../../shared/types';
 import { formatDuration, saveScore } from '../leaderboard';
 import { Boards } from '../menu/Boards';
@@ -8,8 +8,9 @@ import { services, useObservable } from '../services';
 interface ResultsScreenProps {
   result: RunResult;
   profile: PlayerProfile | null;
-  team: TeamState | null;
-  connected: boolean;
+  team: TeamSnapshot | null;
+  /** The team round this run belonged to, or null for a solo run. */
+  sessionId: string | null;
   onPlayAgain: () => void;
   onMainMenu: () => void;
 }
@@ -17,18 +18,21 @@ interface ResultsScreenProps {
 /**
  * The run is over: what happened, what it scored, and what to do next.
  *
- * The number shown is the referee's, not this browser's — the client's own arithmetic is only a
+ * The number shown is the database's, not this browser's — the client's own arithmetic is only a
  * placeholder until the run comes back accepted, which is what stops a modified client writing
  * its own leaderboard entry. Alone, that is the local board; in a team, it is the player's score,
  * their team's total, and where the team stands.
  */
-export function ResultsScreen({ result, profile, team, connected, onPlayAgain, onMainMenu }: ResultsScreenProps) {
+export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, onMainMenu }: ResultsScreenProps) {
   const { scores, sync } = services();
   const accepted = useObservable(scores.accepted);
   const rejected = useObservable(scores.rejected);
+  const submitting = useObservable(scores.submitting);
   const { stats } = result;
   const breakdown = accepted?.breakdown ?? result.breakdown;
   const [view, setView] = useState<'result' | 'players' | 'teams'>('result');
+  // The round's own roster, kept live by the team channel while teammates finish.
+  const round = sessionId && team?.session?.id === sessionId ? team : null;
 
   // The device's own list is kept whatever the network does, so a solo player always has one.
   const local = useMemo(
@@ -40,14 +44,14 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
   // arriving, so the panel below can show what they are doing rather than a row of dashes.
   const [live, setLive] = useState<Record<string, number>>({});
   useEffect(() => {
-    if (!team) return;
+    if (!round) return;
     const tick = setInterval(() => {
       const seen: Record<string, number> = {};
       for (const peer of sync.peers()) seen[peer.playerId] = Math.round(peer.presence * 100) / 100;
       setLive(seen);
     }, 1000);
     return () => clearInterval(tick);
-  }, [team, sync]);
+  }, [round, sync]);
 
   if (view !== 'result') {
     return (
@@ -138,47 +142,46 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
             {accepted.individualRank ? ` · #${accepted.individualRank} on the players’ board.` : ''}
           </p>
         )}
-        {!accepted && !rejected && <p className="mt-2 text-[11px] text-dusk-400">{connected ? 'Confirming your score…' : 'Offline — kept on this device.'}</p>}
+        {submitting && <p className="mt-2 text-[11px] text-dusk-400">Saving your score…</p>}
+        {!submitting && !accepted && !rejected && !profile && <p className="mt-2 text-[11px] text-dusk-400">Sign in to put your runs on the board.</p>}
         {rejected && <p className="mt-2 text-[11px] text-[#d98a7a]">{rejected}</p>}
-        {!team && local.rank > 0 && <p className="mt-1 text-[11px] text-dusk-400">Best of {local.scores.length} on this device: #{local.rank}</p>}
+        {!round && local.rank > 0 && <p className="mt-1 text-[11px] text-dusk-400">Best of {local.scores.length} on this device: #{local.rank}</p>}
 
-        {team && (
+        {round && (
           <section className="mt-6 rounded-2xl border border-lamp-400/20 bg-night-900/50 p-4 text-left">
             <div className="flex items-baseline justify-between">
-              <p className="font-display text-lg text-lamp-200">{team.name}</p>
-              <p className="font-display text-xl tabular-nums text-lamp-400">{accepted?.teamScore ?? team.teamScore}</p>
+              <p className="font-display text-lg text-lamp-200">{round.team.name}</p>
+              <p className="font-display text-xl tabular-nums text-lamp-400">{round.teamResult?.teamScore ?? accepted?.teamScore ?? '—'}</p>
             </div>
             <ul className="mt-3 space-y-1 text-xs">
-              {team.members.map((m) => {
-                const me = m.playerId === profile?.playerId;
-                const outThere = !me && m.score === null && (live[m.playerId] ?? 0) > 0.05;
+              {round.sessionPlayers.map((p) => {
+                const me = p.userId === profile?.id;
                 return (
-                  <li key={m.playerId} className="flex items-baseline justify-between gap-3">
-                    <span className={me ? 'text-lamp-200' : 'text-dusk-400'}>{m.displayName}</span>
-                    {m.score !== null ? (
-                      <span className="tabular-nums text-lamp-200/80">{m.score}</span>
-                    ) : (
-                      <span className={outThere ? 'text-lamp-400/80' : 'text-dusk-400/60'}>{outThere ? 'still out there' : 'not finished'}</span>
-                    )}
+                  <li key={p.userId} className="flex items-baseline justify-between gap-3">
+                    <span className={me ? 'text-lamp-200' : 'text-dusk-400'}>{p.displayName}</span>
+                    <RoundState player={p} live={!me && (live[p.userId] ?? 0) > 0.05} />
                   </li>
                 );
               })}
             </ul>
             <p className="mt-2 text-[11px] text-dusk-400">
-              Your team's score grows as they finish — this stays up to date while you wait.
+              {round.teamResult?.isFinal
+                ? `Final: ${round.teamResult.completedPlayers} of ${round.sessionPlayers.length} completed the puja.`
+                : 'Your team’s score grows as they finish — this stays up to date while you wait.'}
             </p>
             {accepted?.teamRank && <p className="mt-3 text-[11px] text-dusk-400">Your team is #{accepted.teamRank} on the team board.</p>}
           </section>
         )}
 
         <div className="mt-8 flex flex-col gap-3">
+          {/* A team round is counted once per player; the next one starts from the lobby. */}
           <button
             type="button"
             autoFocus
-            onClick={onPlayAgain}
+            onClick={sessionId ? onMainMenu : onPlayAgain}
             className="w-full rounded-xl bg-lamp-400 px-6 py-3.5 font-display text-lg text-night-950 transition hover:bg-lamp-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-lamp-400/40 active:scale-[0.98]"
           >
-            Play again
+            {sessionId ? 'Back to lobby' : 'Play again'}
           </button>
           <div className="flex gap-3">
             <button type="button" onClick={() => setView('players')} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-lamp-200/90 transition hover:border-lamp-400 active:scale-[0.98]">
@@ -187,9 +190,11 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
             <button type="button" onClick={() => setView('teams')} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-lamp-200/90 transition hover:border-lamp-400 active:scale-[0.98]">
               Teams
             </button>
-            <button type="button" onClick={onMainMenu} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-dusk-400 transition hover:border-dusk-400 hover:text-lamp-200 active:scale-[0.98]">
-              {team ? 'Lobby' : 'Menu'}
-            </button>
+            {!sessionId && (
+              <button type="button" onClick={onMainMenu} className="flex-1 rounded-xl border border-night-700 px-4 py-3 text-sm text-dusk-400 transition hover:border-dusk-400 hover:text-lamp-200 active:scale-[0.98]">
+                {team ? 'Lobby' : 'Menu'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -198,6 +203,19 @@ export function ResultsScreen({ result, profile, team, connected, onPlayAgain, o
 }
 
 export type { LeaderboardEntry };
+
+function RoundState({ player, live }: { player: SessionPlayer; live: boolean }) {
+  if (player.score !== null) {
+    return (
+      <span className="tabular-nums text-lamp-200/80">
+        {player.score}
+        {player.completed === false && <span className="ml-1.5 text-[10px] uppercase tracking-widest text-dusk-400">dawn</span>}
+      </span>
+    );
+  }
+  if (player.completionState === 'abandoned') return <span className="text-dusk-400/60">left the round</span>;
+  return <span className={live ? 'text-lamp-400/80' : 'text-dusk-400/60'}>{live ? 'still out there' : 'not finished'}</span>;
+}
 
 /** One plain sentence about how close the run got, for a night that ran out. */
 function missingKinds(stats: { itemsCollected: number }): string {

@@ -27,7 +27,6 @@ dist-ssr
 *.blend1
 
 # Server runtime state
-server/data/
 
 # Local tooling / generated
 .agents/

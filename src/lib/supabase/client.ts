@@ -3,10 +3,15 @@
  *
  * This is a Vite SPA (not Next.js), so we use the browser client from
  * `@supabase/supabase-js` — no cookie/middleware helpers.
+ *
+ * Identity comes from Clerk through Supabase third-party auth: every request and the Realtime
+ * socket carry the Clerk session token, and Postgres reads the player id from its `sub` claim.
+ * Only the publishable key is ever in the browser.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let client: SupabaseClient | null = null;
+let tokenProvider: (() => Promise<string | null>) | null = null;
 
 function url(): string | undefined {
   return import.meta.env.VITE_SUPABASE_URL || undefined;
@@ -14,6 +19,13 @@ function url(): string | undefined {
 
 function key(): string | undefined {
   return import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || undefined;
+}
+
+/** Set by the auth bridge once Clerk has loaded; null when signed out. */
+export function setAccessTokenProvider(provider: (() => Promise<string | null>) | null): void {
+  tokenProvider = provider;
+  // The Realtime socket asks for the token itself; tell it the identity changed.
+  if (client) void client.realtime.setAuth().catch((error: unknown) => console.warn('[supabase] realtime auth refresh failed', error));
 }
 
 export function createBrowserClient(): SupabaseClient {
@@ -26,10 +38,7 @@ export function createBrowserClient(): SupabaseClient {
     );
   }
   client = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
+    accessToken: async () => (tokenProvider ? await tokenProvider() : null),
   });
   return client;
 }
