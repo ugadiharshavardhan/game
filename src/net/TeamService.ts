@@ -36,14 +36,18 @@ export class TeamService {
     this.net.send({ type: 'hello', profile });
   }
 
-  create(name: string): void {
+  create(name: string, profile?: PlayerProfile | null): void {
     this.error.set(null);
+    if (profile) this.announce(profile);
     this.net.send({ type: 'create-team', name });
   }
 
-  join(code: string): void {
+  join(code: string, profile?: PlayerProfile | null): void {
     this.error.set(null);
-    this.net.send({ type: 'join-team', code });
+    if (profile) this.announce(profile);
+    const trimmed = code.trim().toUpperCase();
+    const tidy = normaliseTeamCode(trimmed);
+    this.net.send({ type: 'join-team', code: tidy || trimmed });
   }
 
   leave(): void {

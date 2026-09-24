@@ -99,7 +99,9 @@ export class LocalTransport implements Transport {
     if (isToHost(wire)) {
       if (!this.authority) return;
       // A tab we have not heard from before is a new connection.
-      this.authority.connect(wire.from, (m) => this.channel?.postMessage({ to: wire.from, message: m } satisfies Wire));
+      if (!this.authority.has(wire.from)) {
+        this.authority.connect(wire.from, (m) => this.channel?.postMessage({ to: wire.from, message: m } satisfies Wire));
+      }
       this.authority.message(wire.from, wire.message);
       return;
     }

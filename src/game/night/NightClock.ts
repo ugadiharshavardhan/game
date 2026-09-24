@@ -38,7 +38,7 @@ export interface NightConfig {
  */
 export const DEFAULT_NIGHT_CONFIG: NightConfig = {
   seconds: 900,
-  startHour: 18.5,
+  startHour: 19.0,
   endHour: 5,
   evening: 0.1,
   dawn: 0.88,

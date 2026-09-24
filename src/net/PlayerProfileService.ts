@@ -6,7 +6,7 @@
  * sign-in, the browser still makes up a local id.
  */
 import { cleanCampus, cleanName, makePlayerId } from '../shared/identity';
-import type { PlayerProfile } from '../shared/multiplayer';
+import type { CharacterModel, PlayerGender, PlayerProfile } from '../shared/multiplayer';
 import { Observable } from './Observable';
 
 const KEY = 'moonlight-seva.player';
@@ -37,17 +37,47 @@ export class PlayerProfileService {
    * The name the player typed on the way in. Keeps their id if they have played before.
    * When `clerkUserId` is set, that id is used so the same Google account keeps one score.
    */
-  signIn(displayName: string, campus = '', clerkUserId?: string): PlayerProfile | null {
+  signIn(displayName: string, campus = '', clerkUserId?: string, gender?: PlayerGender, character?: CharacterModel): PlayerProfile | null {
     const name = cleanName(displayName);
     if (!name) return null;
     const existing = this.profile.get();
     const playerId = clerkUserId || existing?.playerId || makePlayerId();
     const profile: PlayerProfile = existing
-      ? { ...existing, playerId, displayName: name, campus: cleanCampus(campus) }
-      : { playerId, displayName: name, campus: cleanCampus(campus), createdAt: Date.now(), bestIndividualScore: 0, gamesPlayed: 0 };
+      ? {
+          ...existing,
+          playerId,
+          displayName: name,
+          campus: cleanCampus(campus),
+          gender: gender ?? existing.gender ?? (character === 'woman' ? 'female' : 'male'),
+          character: character ?? existing.character ?? (gender === 'female' ? 'woman' : 'devotee'),
+        }
+      : {
+          playerId,
+          displayName: name,
+          campus: cleanCampus(campus),
+          gender: gender ?? (character === 'woman' ? 'female' : 'male'),
+          character: character ?? (gender === 'female' ? 'woman' : 'devotee'),
+          createdAt: Date.now(),
+          bestIndividualScore: 0,
+          gamesPlayed: 0,
+        };
     write(profile);
     this.profile.set(profile);
     return profile;
+  }
+
+  updateProfile(updates: Partial<PlayerProfile>): PlayerProfile | null {
+    const current = this.profile.get();
+    if (!current) return null;
+    const next: PlayerProfile = {
+      ...current,
+      ...updates,
+      displayName: updates.displayName ? cleanName(updates.displayName) : current.displayName,
+      campus: updates.campus !== undefined ? cleanCampus(updates.campus) : current.campus,
+    };
+    write(next);
+    this.profile.set(next);
+    return next;
   }
 
   /** After a run: their own copy of what they have done. The boards are the server's business. */

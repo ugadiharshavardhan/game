@@ -7,9 +7,9 @@ const run = (c: NightClock, seconds: number, dt = 0.05) => {
 };
 
 describe('NightClock', () => {
-  it('opens at 18:30 and ends at 05:00', () => {
+  it('opens at 19:00 and ends at 05:00', () => {
     const c = new NightClock();
-    expect(c.label).toBe('6:30 PM');
+    expect(c.label).toBe('7:00 PM');
     run(c, DEFAULT_NIGHT_CONFIG.seconds + 1);
     expect(c.label).toBe('5:00 AM');
     expect(c.t).toBe(1);
@@ -27,8 +27,8 @@ describe('NightClock', () => {
 
   it('reads midnight halfway through the night', () => {
     const c = new NightClock();
-    // 18:30 to 00:00 is 5.5 of the night's 10.5 hours.
-    run(c, DEFAULT_NIGHT_CONFIG.seconds * (5.5 / 10.5));
+    // 19:00 to 00:00 is 5.0 of the night's 10 hours.
+    run(c, DEFAULT_NIGHT_CONFIG.seconds * (5 / 10));
     expect(c.label).toBe('12:00 AM');
   });
 
@@ -94,9 +94,9 @@ describe('NightClock', () => {
 
   it('counts the in-game minutes left to 05:00', () => {
     const c = new NightClock();
-    expect(c.minutesLeft).toBe(630); // 18:30 to 05:00
+    expect(c.minutesLeft).toBe(600); // 19:00 to 05:00
     c.windForward(DEFAULT_NIGHT_CONFIG.seconds / 2);
-    expect(c.minutesLeft).toBe(315);
+    expect(c.minutesLeft).toBe(300);
     c.windForward(DEFAULT_NIGHT_CONFIG.seconds);
     expect(c.minutesLeft).toBe(0);
   });

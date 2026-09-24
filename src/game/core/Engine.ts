@@ -59,6 +59,8 @@ export interface GameOptions {
   link?: PeerLink | null;
   /** The short guided walk instead of a full run. */
   tutorial?: boolean;
+  /** Which character model to use (devotee, woman, or pujari). */
+  character?: import('../../shared/multiplayer').CharacterModel;
 }
 
 /**
@@ -166,9 +168,10 @@ export class Engine {
       const { buildVillage } = await import('../world/village/Village');
       return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality);
     };
+    const charFile = this.options.character === 'woman' ? 'sareelady.glb' : this.options.character === 'pujari' ? 'pujari.glb' : 'character.glb';
     const [world, gltf, pores] = await Promise.all([
       buildWorld(),
-      new GLTFLoader().loadAsync(`${BASE}assets/models/devotee.glb`),
+      new GLTFLoader().loadAsync(`${BASE}assets/models/${charFile}`),
       loadSkinDetail().catch(() => null),
       this.loadAudio(),
     ]);
@@ -177,6 +180,11 @@ export class Engine {
       return;
     }
     this.world = world;
+    if (charFile === 'character.glb') {
+      gltf.scene.scale.setScalar(0.82);
+    } else if (charFile === 'sareelady.glb') {
+      gltf.scene.position.y += 1.0;
+    }
     if (pores) applySkinDetail(gltf.scene, pores);
     // The devotee carries no animation of his own: his clips are made here, once, and the
     // teammates' ghosts play the very same ones.

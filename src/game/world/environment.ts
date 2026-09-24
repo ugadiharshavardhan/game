@@ -96,7 +96,7 @@ export const EVENING: EnvironmentOptions = {
   moonAzimuth: 105,
   moonRiseElevation: 3,
   moonHighElevation: 40,
-  fogDensity: 0.0115,
+  fogDensity: 0.006,
   shadowExtent: 26,
   shadowMapSize: 2048,
 };
@@ -140,7 +140,7 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
   envSky.material.dispose();
   disposables.push(env);
 
-  const fog = new FogExp2(new Color('#7a6070'), o.fogDensity);
+  const fog = new FogExp2(new Color('#161d33'), o.fogDensity);
   scene.fog = fog;
 
   const sun = new DirectionalLight('#ffa860', 1.75);
@@ -223,10 +223,20 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
       else dirFrom(o.moonRiseElevation, o.moonAzimuth, moonDir);
       moon.position.copy(moonPos.copy(moonDir).multiplyScalar(DOME - 20));
       moon.lookAt(heavens.position);
-      (moon.material as MeshBasicMaterial).opacity = look.moonOpacity;
-      for (const c of moon.children) ((c as Mesh).material as MeshBasicMaterial).opacity = look.moonOpacity * 0.5;
-      (stars.material as PointsMaterial).opacity = look.starOpacity;
-      heavens.visible = look.starOpacity > 0.01 || look.moonOpacity > 0.01;
+
+      // Moon exists in the sky from the start, wrapped in atmospheric drifting clouds
+      const moonAlpha = Math.max(0.85, look.moonOpacity);
+      (moon.material as MeshBasicMaterial).opacity = moonAlpha;
+      for (const c of moon.children) {
+        const m = (c as Mesh).material as MeshBasicMaterial;
+        if (c.name === 'moon-cloud') {
+          m.opacity = Math.min(0.88, moonAlpha * 0.95);
+        } else {
+          m.opacity = moonAlpha * 0.5;
+        }
+      }
+      (stars.material as PointsMaterial).opacity = Math.max(0.35, look.starOpacity);
+      heavens.visible = true;
     },
 
     dispose() {
@@ -283,7 +293,7 @@ function starField(): Points {
   return p;
 }
 
-/** The moon: a painted disc with its maria, and a soft halo in the humid air. */
+/** The moon: a painted disc with its maria, a soft halo, and drifting atmospheric clouds. */
 function moonDisc(): Mesh {
   const disc = canvasTexture(256, (g, w) => {
     const r = w / 2;
@@ -311,13 +321,61 @@ function moonDisc(): Mesh {
     g.fillStyle = grad;
     g.fillRect(0, 0, w, w);
   });
+
+  // Soft atmospheric monsoon clouds covering the face of the moon
+  const cloudsTex = canvasTexture(512, (g, w) => {
+    const puffs = [
+      { x: 0.25, y: 0.44, rx: 0.28, ry: 0.14, a: 0.75 },
+      { x: 0.48, y: 0.40, rx: 0.30, ry: 0.16, a: 0.80 },
+      { x: 0.72, y: 0.48, rx: 0.26, ry: 0.13, a: 0.70 },
+      { x: 0.35, y: 0.30, rx: 0.22, ry: 0.11, a: 0.65 },
+      { x: 0.60, y: 0.34, rx: 0.24, ry: 0.13, a: 0.68 },
+      { x: 0.40, y: 0.60, rx: 0.25, ry: 0.12, a: 0.65 },
+      { x: 0.64, y: 0.56, rx: 0.27, ry: 0.14, a: 0.70 },
+    ];
+    for (const p of puffs) {
+      const cx = p.x * w;
+      const cy = p.y * w;
+      const rx = p.rx * w;
+      const ry = p.ry * w;
+      const rad = Math.max(rx, ry);
+      const grad = g.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      grad.addColorStop(0, `rgba(18, 24, 42, ${p.a})`);
+      grad.addColorStop(0.55, `rgba(28, 38, 62, ${p.a * 0.75})`);
+      grad.addColorStop(0.82, `rgba(75, 92, 130, ${p.a * 0.4})`);
+      grad.addColorStop(1, 'rgba(15, 20, 35, 0)');
+      g.save();
+      g.translate(cx, cy);
+      g.scale(rx / rad, ry / rad);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(0, 0, rad, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+  });
+
   // ~2.2° across: larger than life, as the moon always looks near the horizon.
   const moon = new Mesh(new PlaneGeometry(16, 16), new MeshBasicMaterial({ map: disc, transparent: true, opacity: 0, depthWrite: false, fog: false, color: new Color(1.6, 1.55, 1.4) }));
   const glow = new Mesh(new PlaneGeometry(110, 110), new MeshBasicMaterial({ map: halo, transparent: true, opacity: 0, depthWrite: false, fog: false, blending: AdditiveBlending }));
   glow.position.set(0, 0, -1);
   moon.add(glow);
+
+  const cloudCover1 = new Mesh(new PlaneGeometry(36, 22), new MeshBasicMaterial({ map: cloudsTex, transparent: true, opacity: 0.85, depthWrite: false, fog: false }));
+  cloudCover1.name = 'moon-cloud';
+  cloudCover1.position.set(-1, 0.4, 0.3);
+  moon.add(cloudCover1);
+
+  const cloudCover2 = new Mesh(new PlaneGeometry(42, 26), new MeshBasicMaterial({ map: cloudsTex, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+  cloudCover2.name = 'moon-cloud';
+  cloudCover2.position.set(2, -0.6, 0.6);
+  cloudCover2.rotation.z = Math.PI;
+  moon.add(cloudCover2);
+
   moon.renderOrder = -1;
   glow.renderOrder = -1;
+  cloudCover1.renderOrder = 0;
+  cloudCover2.renderOrder = 0;
   return moon;
 }
 

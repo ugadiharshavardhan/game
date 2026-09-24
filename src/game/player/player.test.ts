@@ -49,10 +49,10 @@ describe('deriveLocomotionState', () => {
     [1, false, PlayerStateId.Walking],
     [2.2, false, PlayerStateId.Walking],
     // Between the gaits, a speed reads as whichever it is nearer.
+    [3.0, false, PlayerStateId.FastWalking],
     [3.3, false, PlayerStateId.FastWalking],
-    [4, false, PlayerStateId.FastWalking],
-    [4.6, false, PlayerStateId.Running],
-    [5, false, PlayerStateId.Running],
+    [3.7, false, PlayerStateId.Running],
+    [4.0, false, PlayerStateId.Running],
     [0, true, PlayerStateId.Sneaking],
     [1.4, true, PlayerStateId.Sneaking],
   ])('speed %f crouched %s → %s', (speed, crouched, expected) =>

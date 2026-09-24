@@ -110,9 +110,9 @@ export default function App() {
     () =>
       session.session.subscribe((live) => {
         if (!live || stateRef.current !== 'menu') return;
-        startRun({ session: session.clock() ?? undefined, link: sync, quality: settingsRef.current.quality });
+        startRun({ session: session.clock() ?? undefined, link: sync, quality: settingsRef.current.quality, character: profile?.character ?? 'devotee' });
       }),
-    [startRun],
+    [startRun, profile],
   );
 
   const openBag = useCallback((open: boolean) => {
@@ -233,8 +233,8 @@ export default function App() {
   if (appState === 'menu') {
     return (
       <MainMenu
-        onPlaySolo={() => startRun({ quality: settings.quality })}
-        onTutorial={() => startRun({ tutorial: true, quality: settings.quality })}
+        onPlaySolo={() => startRun({ quality: settings.quality, character: profile?.character ?? 'devotee' })}
+        onTutorial={() => startRun({ tutorial: true, quality: settings.quality, character: profile?.character ?? 'devotee' })}
         settings={settings}
         onSettings={changeSettings}
       />

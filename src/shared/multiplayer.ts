@@ -12,12 +12,17 @@
  */
 import type { RunStats, ScoreBreakdown } from './types.ts';
 
+export type CharacterModel = 'devotee' | 'woman' | 'pujari';
+export type PlayerGender = 'male' | 'female' | 'other';
+
 export interface PlayerProfile {
   /** `PLY_8F72K91` — made once, kept in this browser, and the only thing that identifies a player. */
   playerId: string;
   displayName: string;
   /** Optional, for the contest's campus column. */
   campus: string;
+  gender?: PlayerGender;
+  character?: CharacterModel;
   createdAt: number;
   bestIndividualScore: number;
   gamesPlayed: number;

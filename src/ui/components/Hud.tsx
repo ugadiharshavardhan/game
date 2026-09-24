@@ -42,6 +42,7 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
   const [speech, setSpeech] = useState<{ speaker: string; text: string; key: number } | null>(null);
   const [pickup, setPickup] = useState<{ id: ItemId; quantity: number; key: number } | null>(null);
   const [atTemple, setAtTemple] = useState(false);
+  const [strengthPopup, setStrengthPopup] = useState<{ lostCount: number; details: string } | null>(null);
   const touch = device === 'touch';
 
   // Place names, adventure-game style: fade in on arrival, fade out after a few seconds.
@@ -56,6 +57,12 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
   useGameEvent('ui:player-state', ({ state: s }) => setState(s));
   useGameEvent('ui:pointer-lock', ({ locked: l }) => setLocked(l));
   useGameEvent('ui:health', (h) => setHealth((q) => (q.value === h.value ? q : { value: h.value })));
+  useGameEvent('ui:strength-depleted', (payload) => {
+    setStrengthPopup(payload);
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  });
   useGameEvent('ui:shelter', ({ inside, family }) => setShelter(inside ? family : null));
   useGameEvent('ui:at-temple', ({ inside }) => setAtTemple(inside));
   useGameEvent('ui:toast', ({ text, tone }) => {
@@ -234,6 +241,44 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
       {/* Sneaking is worth knowing about: it keeps you out of the light. */}
       {state === 'sneaking' && !touch && (
         <p className="absolute inset-x-0 bottom-20 text-center text-[10px] uppercase tracking-[0.3em] text-dusk-400">Sneaking · low and quiet</p>
+      )}
+
+      {/* Strength Depletion Modal */}
+      {strengthPopup && (
+        <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md animate-[prompt-in_250ms_ease-out] rounded-2xl border border-lamp-400/50 bg-gradient-to-b from-night-900/95 via-night-950/95 to-black/95 p-6 text-center shadow-[0_0_50px_rgba(242,196,106,0.22)]">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/15 text-3xl shadow-[0_0_30px_rgba(242,196,106,0.3)]">
+              🌕
+            </div>
+
+            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.35em] text-lamp-400">Strength Depleted · 0%</p>
+            <h2 className="mt-1 font-display text-2xl text-lamp-200">The Moonlight Overwhelmed You</h2>
+
+            <div className="my-5 rounded-xl border border-red-500/30 bg-red-950/40 p-4 text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🎒</span>
+                <p className="font-semibold text-red-300">Your things inside the bag was gone!</p>
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-dusk-300">
+                {strengthPopup.lostCount > 0
+                  ? `All ${strengthPopup.lostCount} offering(s) collected in your bag have been lost (${strengthPopup.details || 'collected items'}). They are back in the village to be gathered again.`
+                  : 'Your strength completed to 0. All things in your bag are empty, and you have returned to the starting point.'}
+              </p>
+            </div>
+
+            <p className="text-xs leading-relaxed text-lamp-300/80">
+              You have returned to the starting point. Stay in the shadows, behind walls, and under verandas to protect your strength!
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setStrengthPopup(null)}
+              className="mt-6 w-full rounded-xl border border-lamp-400/60 bg-gradient-to-r from-lamp-400/30 via-lamp-400/50 to-lamp-400/30 py-3 text-sm font-semibold tracking-wider text-lamp-100 shadow-[0_0_25px_rgba(242,196,106,0.25)] transition hover:bg-lamp-400/60 active:scale-98"
+            >
+              Continue Seva
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

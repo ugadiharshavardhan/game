@@ -34,6 +34,7 @@ export interface ShelterActor {
 export interface ScriptedCamera {
   setShot(shot: CameraShot | null, seconds: number, via?: readonly Vector3[]): void;
   setOrientation(yaw: number, pitch: number, immediate?: boolean): void;
+  snap?(): void;
 }
 
 export type ShelterCamera = ScriptedCamera;
@@ -215,6 +216,16 @@ export class ShelterManager {
     this.shotFor(best, 0.45, []);
     EventBus.emit('ui:shelter', { inside: true, family: best.interior.label });
     return best.interior.label;
+  }
+
+  reset(): void {
+    this.steps.length = 0;
+    this.actor?.stopWalking();
+    this.actor?.setScripted(false);
+    this.current = null;
+    this.shotOwner = null;
+    this.camera?.setShot(null, 0);
+    EventBus.emit('ui:shelter', { inside: false, family: null });
   }
 
   private shotFor(house: SafeHouse, seconds: number, via: Vector3[]): void {

@@ -118,6 +118,10 @@ export class Authority {
     this.connections.set(id, { id, playerId: null, profile: null, teamCode: null, send });
   }
 
+  has(id: string): boolean {
+    return this.connections.has(id);
+  }
+
   disconnect(id: string): void {
     const c = this.connections.get(id);
     if (!c) return;
@@ -188,8 +192,11 @@ export class Authority {
   private hello(c: Connection, profile: PlayerProfile): void {
     const name = cleanName(profile?.displayName ?? '');
     if (!name) return this.fail(c, 'bad-name');
-    // The id the browser made is honoured, but it has to look like one.
-    const playerId = /^PLY_[A-Z0-9]{5,12}$/.test(profile.playerId) ? profile.playerId : makePlayerId(this.random);
+    // The id the browser made is honoured (including Clerk user IDs and guest IDs).
+    const playerId =
+      profile.playerId && (profile.playerId.startsWith('user_') || /^PLY_[A-Z0-9]{4,16}$/.test(profile.playerId) || profile.playerId.trim().length >= 4)
+        ? profile.playerId.trim()
+        : makePlayerId(this.random);
     // One connection per player: a second tab with the same id replaces the first.
     const old = this.byPlayer.get(playerId);
     if (old && old !== c.id) {

@@ -84,6 +84,8 @@ export interface GameEventMap {
    * rises only behind a door, so the bar is also the instruction.
    */
   'ui:health': { value: number; level: HealthLevel; draining: boolean };
+  /** Strength reached 0 (overwhelmed by moonlight): bag items were emptied, user respawns at start. */
+  'ui:strength-depleted': { lostCount: number; details: string };
   /** The player is standing in the temple: show what the puja still wants. */
   'ui:at-temple': { inside: boolean };
   /** A cinematic is playing (the puja): the HUD stands back. */

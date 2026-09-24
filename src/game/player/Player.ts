@@ -73,8 +73,8 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
     this.audio = new PlayerAudio(
       bank,
       config,
-      model.getObjectByName('mixamorigLeftFoot'),
-      model.getObjectByName('mixamorigRightFoot'),
+      model.getObjectByName('mixamorigLeftFoot') ?? model.getObjectByName('mixamorig:LeftFoot'),
+      model.getObjectByName('mixamorigRightFoot') ?? model.getObjectByName('mixamorig:RightFoot'),
     );
     this.unsubscribe = this.state.onChange((_, to) => EventBus.emit('ui:player-state', { state: to }));
     this.syncModel();

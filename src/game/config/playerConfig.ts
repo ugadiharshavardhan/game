@@ -80,8 +80,8 @@ export interface PlayerConfig {
 export const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   slowWalkSpeed: 1.2,
   walkSpeed: 2.2,
-  fastWalkSpeed: 3.3,
-  runSpeed: 5.0,
+  fastWalkSpeed: 3.0,
+  runSpeed: 4.0,
   crouchSpeed: 1.4,
   idleThreshold: 0.1,
 

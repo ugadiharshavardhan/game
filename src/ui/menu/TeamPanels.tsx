@@ -5,9 +5,10 @@ import { services, useObservable } from '../services';
 
 /** Making a team: a name, and the code that comes back to share with friends. */
 export function CreateTeam({ onBack }: { onBack: () => void }) {
-  const { teams } = services();
+  const { teams, profiles } = services();
   const team = useObservable(teams.team);
   const error = useObservable(teams.error);
+  const profile = useObservable(profiles.profile);
   const [name, setName] = useState('');
 
   if (team) return <TeamLobby onLeave={onBack} />;
@@ -17,7 +18,7 @@ export function CreateTeam({ onBack }: { onBack: () => void }) {
       className="w-full max-w-sm text-left"
       onSubmit={(e) => {
         e.preventDefault();
-        teams.create(name);
+        teams.create(name, profile);
       }}
     >
       <label className="block text-[10px] uppercase tracking-[0.3em] text-dusk-400" htmlFor="team-name">
@@ -45,11 +46,13 @@ export function CreateTeam({ onBack }: { onBack: () => void }) {
 
 /** Joining a team: four letters, however they were written down. */
 export function JoinTeam({ onBack }: { onBack: () => void }) {
-  const { teams } = services();
+  const { teams, profiles } = services();
   const team = useObservable(teams.team);
   const error = useObservable(teams.error);
+  const profile = useObservable(profiles.profile);
   const [code, setCode] = useState('');
   const tidy = normaliseTeamCode(code);
+  const canJoin = isTeamCode(tidy) || tidy.length === 9;
 
   if (team) return <TeamLobby onLeave={onBack} />;
 
@@ -58,7 +61,7 @@ export function JoinTeam({ onBack }: { onBack: () => void }) {
       className="w-full max-w-sm text-left"
       onSubmit={(e) => {
         e.preventDefault();
-        teams.join(code);
+        teams.join(tidy || code, profile);
       }}
     >
       <label className="block text-[10px] uppercase tracking-[0.3em] text-dusk-400" htmlFor="team-code">
@@ -73,13 +76,13 @@ export function JoinTeam({ onBack }: { onBack: () => void }) {
         autoCorrect="off"
         spellCheck={false}
         onChange={(e) => setCode(e.target.value)}
-        placeholder="MOON-7K4P"
+        placeholder="7K4P or MOON-7K4P"
         className="mt-2 w-full rounded-xl border border-night-700 bg-night-950/70 px-4 py-3 text-center font-display text-2xl tracking-[0.3em] text-lamp-200 placeholder:text-dusk-400/40 focus:border-lamp-400 focus:outline-none"
       />
       {error && <p className="mt-3 text-xs text-[#d98a7a]">{error}</p>}
       <button
         type="submit"
-        disabled={!isTeamCode(tidy)}
+        disabled={!canJoin}
         className="mt-6 w-full rounded-xl bg-lamp-400 px-6 py-3.5 font-display text-lg text-night-950 transition hover:bg-lamp-200 disabled:bg-night-700 disabled:text-dusk-400 active:scale-[0.98]"
       >
         Join team

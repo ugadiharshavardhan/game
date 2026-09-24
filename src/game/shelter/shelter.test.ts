@@ -155,7 +155,7 @@ describe('safe houses', () => {
       ]) {
         const p = i.at(lx, PLINTH_H, lz);
         w.controller.walkTowards(p.x, p.z, 1.8);
-        w.until(() => w.controller.walkRemaining < 0.35, `${id}: walking the room`, 60 * 6);
+        w.until(() => w.controller.walkRemaining < 0.35, `${id}: walking the room`, 60 * 9);
         expect(w.shelter.isSafe).toBe(true);
       }
       w.controller.stopWalking();

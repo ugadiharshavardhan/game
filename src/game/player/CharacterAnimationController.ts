@@ -10,13 +10,17 @@ import {
 import type { PlayerConfig } from '../config/playerConfig';
 import { blendWeights, strideRate } from './locomotion';
 
-/** One-shot full-body animations. Names are the clip names baked into devotee.glb. */
+/** One-shot and sustained character animations. */
 export const PlayerAction = {
   Interact: 'Interact',
   Pickup: 'Pickup',
   Celebrate: 'Celebrate',
   /** Kneeling before Bappa and bowing to the ground: offering and praying at the temple. */
   Pranam: 'Pranam',
+  Offer: 'Offer',
+  Talk: 'Talk',
+  Sit: 'Sit',
+  Sleep: 'Sleep',
   EnterHouse: 'EnterHouse',
   ExitHouse: 'ExitHouse',
 } as const;
@@ -45,6 +49,10 @@ export const MovementState = {
   Interact: 'interact',
   Pickup: 'pickup',
   Celebrate: 'celebrate',
+  Offer: 'offer',
+  Talk: 'talk',
+  Sit: 'sit',
+  Sleep: 'sleep',
 } as const;
 export type MovementState = (typeof MovementState)[keyof typeof MovementState];
 
@@ -178,6 +186,26 @@ export class CharacterAnimationController {
 
   playCelebrate(onDone: () => void = () => {}): void {
     this.play(PlayerAction.Celebrate, null, onDone);
+  }
+
+  playOffer(onContact: (() => void) | null = null, onDone: () => void = () => {}): void {
+    this.play(PlayerAction.Offer, onContact, onDone);
+  }
+
+  playPranam(onContact: (() => void) | null = null, onDone: () => void = () => {}): void {
+    this.play(PlayerAction.Pranam, onContact, onDone);
+  }
+
+  playTalk(onDone: () => void = () => {}): void {
+    this.play(PlayerAction.Talk, null, onDone);
+  }
+
+  playSit(onDone: () => void = () => {}): void {
+    this.play(PlayerAction.Sit, null, onDone);
+  }
+
+  playSleep(onDone: () => void = () => {}): void {
+    this.play(PlayerAction.Sleep, null, onDone);
   }
 
   /** Drives the blend from a named state instead of a measured speed. */

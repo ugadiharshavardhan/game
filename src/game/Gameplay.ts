@@ -300,11 +300,20 @@ export class Gameplay {
     this.health.revive();
     this.sounds?.play('drop');
     world.restockOfferings?.();
-    const taken = world.shelter?.takeIndoors?.(player.feet);
+    world.shelter?.reset?.();
+    player.placeAt(world.spawn, world.spawnYaw);
+    this.rig?.setShot(null, 0);
+    this.rig?.snap?.();
+
+    EventBus.emit('ui:inventory', this.inventory.snapshot());
     const said = lost ? `; you lost ${describeStacks(stacks)} — gather ${lost === 1 ? 'it' : 'them'} again` : '';
     EventBus.emit('ui:toast', {
-      text: taken ? `The moonlight overwhelms you — ${taken} takes you in${said}` : `The moonlight overwhelms you${said}`,
+      text: `The moonlight overwhelms you${said}`,
       tone: 'warn',
+    });
+    EventBus.emit('ui:strength-depleted', {
+      lostCount: lost,
+      details: describeStacks(stacks),
     });
     this.emitExposure();
     this.emitHealth();
