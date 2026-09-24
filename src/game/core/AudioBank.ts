@@ -68,6 +68,11 @@ export class AudioBank {
     this.sets.set(set, list);
   }
 
+  /** Replaces any existing buffers for a sound effect key with a single buffer. */
+  setBuffer(set: string, buffer: AudioBuffer): void {
+    this.sets.set(set, [buffer]);
+  }
+
   /** Master volume, 0–1 (the settings panel). */
   setVolume(volume: number): void {
     this.master.gain.value = Math.min(Math.max(volume, 0), 1);

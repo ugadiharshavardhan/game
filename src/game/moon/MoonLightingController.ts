@@ -224,14 +224,14 @@ export const DAWN: SkyLook = look(0, {
   hemiSky: '#93a3cf',
   hemiGround: '#5b4734',
   hemiIntensity: 0.6,
-  fogColour: '#8b8095',
-  fogDensity: 0.013,
-  envIntensity: 0.38,
-  turbidity: 7,
-  rayleigh: 3,
-  mieCoefficient: 0.005,
+  fogColour: '#323042',
+  fogDensity: 0.0068,
+  envIntensity: 0.35,
+  turbidity: 6,
+  rayleigh: 2.8,
+  mieCoefficient: 0.0045,
   mieDirectionalG: 0.8,
-  skyTint: [0.8, 0.76, 0.85],
+  skyTint: [0.65, 0.62, 0.75],
   skyBodyIsMoon: false,
   starOpacity: 0.04,
   moonOpacity: 0.03,
@@ -266,7 +266,8 @@ export class MoonLightingController {
   update(dt: number, moon: MoonFrame): void {
     const target = Math.max(moon.nightBase, moon.moonlight);
     const step = MathUtils.clamp(target - this.night, -MAX_RATE * dt, MAX_RATE * dt);
-    const dawnStep = MathUtils.clamp(moon.dawn - this.dawn, -MAX_RATE * dt, MAX_RATE * dt);
+    const effectiveDawn = moon.phase === 'dawn' ? moon.dawn : 0;
+    const dawnStep = MathUtils.clamp(effectiveDawn - this.dawn, -MAX_RATE * dt, MAX_RATE * dt);
     this.apply(this.night + step, this.dawn + dawnStep);
   }
 

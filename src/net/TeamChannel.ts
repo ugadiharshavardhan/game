@@ -82,7 +82,7 @@ export class TeamChannel {
     if (this.teamId !== teamId || this.userId !== userId) return;
 
     const channel = supabase.channel(`team:${teamId}`, {
-      config: { private: true, broadcast: { self: false }, presence: { key: userId } },
+      config: { private: false, broadcast: { self: false }, presence: { key: userId } },
     });
     this.channel = channel;
 

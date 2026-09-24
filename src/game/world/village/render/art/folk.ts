@@ -25,23 +25,23 @@ import { type Character, loadCharacter } from './characters';
 import { makeProp, type Prop, type PropName } from './folkProps';
 import type { ArtContext } from './runtime';
 
-/** Kurta colours as CSS filters over the original saffron cloth: white, maroon, leaf, indigo, cream. */
+/** Kurta colours: authentic festive Maharashtrian palettes (Kesari saffron, deep royal maroon, peetambari gold, forest green, raw silk cream). */
 const MAN_OUTFITS = [
-  'saturate(0.12) brightness(1.35)',
-  'hue-rotate(-38deg) saturate(1.2) brightness(0.48)',
-  'hue-rotate(62deg) saturate(0.8) brightness(0.72)',
-  'hue-rotate(185deg) saturate(0.7) brightness(0.7)',
-  'saturate(0.35) brightness(1.15) sepia(0.25)',
+  'none', // Natural rich saffron
+  'hue-rotate(-28deg) saturate(1.2) brightness(0.68)', // Deep royal maroon
+  'hue-rotate(12deg) saturate(1.2) brightness(1.05)', // Peetambari gold
+  'hue-rotate(75deg) saturate(0.85) brightness(0.7)', // Festive forest green
+  'saturate(0.22) brightness(1.12) sepia(0.18)', // Raw silk cream
 ];
 
-/** Sarees over the original green and red: the same weave and border, other colours. */
+/** Sarees: authentic Paithani and Nauvari weaves with harmonious gold and red borders. */
 const WOMAN_OUTFITS = [
-  'none',
-  'hue-rotate(-100deg) saturate(1.1)',
-  'hue-rotate(70deg)',
-  'hue-rotate(150deg) saturate(0.9)',
-  'hue-rotate(-45deg) brightness(1.12)',
-  'hue-rotate(205deg) saturate(0.85)',
+  'none', // Authentic Paithani emerald green with crimson/gold border
+  'hue-rotate(-20deg) saturate(1.15) brightness(0.92)', // Deep festive crimson red
+  'hue-rotate(35deg) saturate(1.05) brightness(0.88)', // Royal peacock teal & gold
+  'hue-rotate(-40deg) saturate(1.1) brightness(0.85)', // Royal plum magenta & gold
+  'hue-rotate(15deg) saturate(1.2) brightness(1.06)', // Kesari turmeric & red border
+  'hue-rotate(55deg) saturate(0.9) brightness(0.8)', // Royal navy silk & gold
 ];
 
 const OUTFITS: Record<FolkKind, string[]> = { man: MAN_OUTFITS, woman: WOMAN_OUTFITS, pujari: [] };
@@ -72,6 +72,28 @@ export function dressed(a: ArtContext, m: Material, kind: FolkKind, outfit: numb
     std.alphaTest = 0.45;
     m.side = 2;
   }
+
+  // Pyjamas should always stay traditional clean off-white / light cream cotton
+  if (/Pyjama/i.test(m.name)) {
+    if (!std.map) return m;
+    const key = `folk:pyjama:clean`;
+    const img = std.map.image as CanvasImageSource & { width: number; height: number };
+    const map = a.bank.canvas(key, [img.width, img.height], (g, w, h) => {
+      g.filter = 'saturate(0.08) brightness(1.2) sepia(0.1)';
+      g.drawImage(img, 0, 0, w, h);
+    }, true, false);
+    map.flipY = std.map.flipY;
+    map.colorSpace = SRGBColorSpace;
+    return a.kit.custom(key, () => {
+      const c = std.clone();
+      c.map = map as CanvasTexture;
+      c.side = 2;
+      c.metalness = 0;
+      c.roughness = 0.9;
+      return c;
+    });
+  }
+
   const filters = OUTFITS[kind];
   if (!/Cloth/.test(m.name) || !std.map || !filters.length) {
     std.metalness = 0;

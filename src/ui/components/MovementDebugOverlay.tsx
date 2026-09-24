@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { EventBus } from '../../shared/EventBus';
 import type { PlayerStateName } from '../../shared/types';
 
@@ -10,14 +10,11 @@ interface MovementDebugOverlayProps {
 export function MovementDebugOverlay({ playerState, character = 'character.glb' }: MovementDebugOverlayProps) {
   const [minimized, setMinimized] = useState(false);
   const [activeAction, setActiveAction] = useState<string>('idle');
-  const [debugVisible, setDebugVisible] = useState(false);
-
-  useEffect(() => {
-    // Show if DEV mode or URL contains debug flag
+  const [debugVisible] = useState(() => {
+    if (typeof window === 'undefined') return false;
     const urlParams = new URLSearchParams(window.location.search);
-    const hasDebug = urlParams.has('debug') || import.meta.env.DEV;
-    setDebugVisible(hasDebug);
-  }, []);
+    return urlParams.has('debug') || Boolean(import.meta.env.DEV);
+  });
 
   if (!debugVisible) return null;
 

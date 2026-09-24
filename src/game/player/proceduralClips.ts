@@ -317,14 +317,14 @@ export interface Gait {
 }
 
 export const GAITS = {
-  slow: { thighFwd: 22, thighBack: 16, kneeLoad: 8, kneeSwing: 45, swingAt: 0.74, armSwing: 10, elbow: -12, elbowPump: 6, lean: 2, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
-  walk: { thighFwd: 30, thighBack: 20, kneeLoad: 12, kneeSwing: 58, swingAt: 0.73, armSwing: 20, elbow: -16, elbowPump: 12, lean: 4, pelvisYaw: 6, sway: 0.025, flight: 0, stance: 0.6 },
+  slow: { thighFwd: 22, thighBack: 16, kneeLoad: 8, kneeSwing: 45, swingAt: 0.74, armSwing: 14, elbow: -14, elbowPump: 6, lean: 2, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
+  walk: { thighFwd: 28, thighBack: 18, kneeLoad: 14, kneeSwing: 60, swingAt: 0.72, armSwing: 24, elbow: -18, elbowPump: 12, lean: 4, pelvisYaw: 5, sway: 0.024, flight: 0, stance: 0.6 },
   // Somewhere to be, but not running: a longer stride, a quicker arm, a little more lean, and a
   // shorter time with both feet down.
-  fast: { thighFwd: 38, thighBack: 23, kneeLoad: 18, kneeSwing: 74, swingAt: 0.71, armSwing: 25, elbow: -30, elbowPump: 14, lean: 7, pelvisYaw: 7, sway: 0.022, flight: 0, stance: 0.52 },
+  fast: { thighFwd: 36, thighBack: 22, kneeLoad: 18, kneeSwing: 76, swingAt: 0.71, armSwing: 28, elbow: -28, elbowPump: 14, lean: 7, pelvisYaw: 6, sway: 0.022, flight: 0, stance: 0.52 },
   // Elbows near a right angle, driving back past the hip and forward to the chest, opposite the
   // legs; the foot lands under the body rather than reaching, so the hips do not pitch up and down.
-  run: { thighFwd: 34, thighBack: 34, kneeLoad: 26, kneeSwing: 105, swingAt: 0.68, armSwing: 36, armBias: 22, elbow: -50, elbowPump: 10, elbowOpen: 14, lean: 12, pelvisYaw: 9, sway: 0.015, flight: 0.05, stance: 0.38 },
+  run: { thighFwd: 36, thighBack: 32, kneeLoad: 24, kneeSwing: 105, swingAt: 0.68, armSwing: 38, armBias: 18, elbow: -46, elbowPump: 12, elbowOpen: 16, lean: 11, pelvisYaw: 8, sway: 0.016, flight: 0.055, stance: 0.38 },
   crouch: { thighFwd: 34, thighBack: 8, kneeLoad: 0, kneeSwing: 40, swingAt: 0.74, armSwing: 8, elbow: -40, elbowPump: 4, lean: 0, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
 } satisfies Record<string, Gait>;
 
@@ -362,7 +362,7 @@ export function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
       ['Spine2', 'y', g.pelvisYaw * 0.4 * c],
       ['Head', 'x', -g.lean * 0.6 - 18 * crouch],
       ['Head', 'y', -g.pelvisYaw * 0.3 * c],
-      ...armsDown(-4 * crouch, 0),
+      ...armsDown(22 - 4 * crouch, 0),
       ['LeftArm', 'x', arm + bias - 20 * crouch],
       ['RightArm', 'x', -arm + bias - 20 * crouch],
       ['LeftForeArm', 'x', pump(arm)],
@@ -396,7 +396,7 @@ export function idlePose(t: number, crouch: number): Pose {
       ['Neck', 'x', -0.6 * breath],
       ['Head', 'x', 3 - 18 * crouch],
       ['Head', 'y', 4 * Math.sin((TAU * t) / 7 + 1)],
-      ...armsDown(-1 * breath, crouch ? -45 : -14),
+      ...armsDown(26 - 1 * breath, crouch ? -45 : -14),
       ...(crouch ? ([['LeftArm', 'x', -28], ['RightArm', 'x', -28]] as Turn[]) : []),
       ['LeftUpLeg', 'x', legs.thigh + 2 * shift * (1 - crouch)],
       ['RightUpLeg', 'x', legs.thigh - 2 * shift * (1 - crouch)],

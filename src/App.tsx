@@ -11,6 +11,7 @@ import { MapOverlay } from './ui/map/MapOverlay';
 import { type CameraSettings, PauseOverlay } from './ui/components/PauseOverlay';
 import { ResultsScreen } from './ui/components/ResultsScreen';
 import { PerfOverlay } from './ui/components/PerfOverlay';
+import { GaneshModelModal } from './ui/components/GaneshModelModal';
 import { TouchControls } from './ui/components/TouchControls';
 import { TutorialCard } from './ui/components/TutorialCard';
 import { useGameEvent } from './ui/hooks/useGameEvent';
@@ -80,6 +81,8 @@ export default function App() {
   useGameEvent('ui:prompt', setPrompt);
   useGameEvent('ui:player-state', ({ state }) => setPlayerState(state));
   useGameEvent('ui:cinematic', ({ active }) => setCinematic(active));
+  const [ganeshModalOpen, setGaneshModalOpen] = useState(false);
+  useGameEvent('ui:ganesh-modal', ({ open }) => setGaneshModalOpen(open));
 
   const startRun = useCallback(
     (next: GameOptions, sessionId: string | null = null) => {
@@ -108,7 +111,7 @@ export default function App() {
     setAppState('results');
     const sessionId = runSessionRef.current;
     if (sessionId) session.finish(sessionId);
-    if (profile) void scores.submit(sessionId, r);
+    void scores.submit(sessionId, r, profile?.bestScore ?? 0);
   });
 
   // The host pressed start (or this player refreshed mid-round): everyone on the menu walks into
@@ -273,6 +276,7 @@ export default function App() {
           )}
           {mapOpen && <MapOverlay onClose={() => openMap(false)} />}
           <InventoryUI open={bagOpen} onClose={() => openBag(false)} snapshot={bag} icons={icons} device={device} />
+          <GaneshModelModal isOpen={ganeshModalOpen} onClose={() => setGaneshModalOpen(false)} />
         </>
       )}
 

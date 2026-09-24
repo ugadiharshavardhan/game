@@ -18,7 +18,7 @@ import { buildEnvironment, EVENING } from '../environment';
 import type { FootSurface, World, WorldFrame, WorldServices } from '../World';
 import { buildColliders } from './colliders';
 import { PujaSequence } from './PujaSequence';
-import { LockedDoor, TempleAltar, VillagerTalk } from './interactables';
+import { LockedDoor, PandalDarshan, TempleAltar, VillagerTalk } from './interactables';
 import { VILLAGE } from './layout';
 import type { LiveDetail, VillageVisuals, VisualsContext } from './render/types';
 import { buildLevel } from './solids';
@@ -86,6 +86,7 @@ export async function buildVillage(
   const lighting = new MoonLightingController(env);
 
   const pandal = VILLAGE.landmarks.find((l) => l.kind === 'pandal');
+  const pandalDarshan = pandal ? new PandalDarshan(new Vector3(pandal.x - 1.0, 0, pandal.z)) : null;
   const t = level.templeOffer;
   const altar = new TempleAltar(new Vector3(t.x, t.y, t.z), services.inventory, services.onPray, services.onPujaComplete);
   const villagers = VILLAGE.villagers
@@ -102,7 +103,7 @@ export async function buildVillage(
   let puja: PujaSequence | null = null;
 
   return {
-    interactables: [...items, ...doors, altar, ...villagers],
+    interactables: [...items, ...doors, altar, ...(pandalDarshan ? [pandalDarshan] : []), ...villagers],
     shelter,
     items,
     mapData: { sources: items.map((i) => ({ id: i.spot.id, item: i.itemId, x: i.spot.x, z: i.spot.z, left: () => i.currentQuantity })), layout: VILLAGE },

@@ -99,8 +99,11 @@ export class PlayerAudio {
     const pitch = 1 + (Math.random() * 2 - 1) * c.footstepPitchVariation;
     const surface = this.surface?.() ?? 'dirt';
 
-    // Stone and dry earth are synthesised; grass and a swept floor are the recorded sets.
-    if (surface === 'stone' || surface === 'dirt') {
+    // If custom walking audio is loaded, play it for authentic movement footsteps
+    if (this.bank.count('walkAudio') > 0) {
+      this.bank.play('walkAudio', 0, c.footstepVolume * loudness, pitch);
+    } else if (surface === 'stone' || surface === 'dirt') {
+      // Stone and dry earth are synthesised; grass and a swept floor are the recorded sets.
       this.sounds?.play(surface === 'stone' ? 'step-stone' : 'step-dirt', c.footstepVolume * loudness, pitch);
     } else {
       const set = surface === 'wood' ? 'stepSoft' : 'step';

@@ -119,10 +119,18 @@ export class PlayerProfileService {
 
     if (isSupabaseConfigured()) {
       try {
-        const raw = await rpc<RawProfile>('ensure_profile', { p_display_name: name, p_campus: camp });
+        const raw = await rpc<RawProfile>('sync_clerk_profile', {
+          p_clerk_user_id: userId,
+          p_display_name: name,
+        });
         if (raw) saved = toProfile(raw);
-      } catch (err) {
-        console.warn('[profiles] Backend profile save failed; saving locally so player can continue:', err);
+      } catch {
+        try {
+          const raw = await rpc<RawProfile>('ensure_profile', { p_display_name: name, p_campus: camp });
+          if (raw) saved = toProfile(raw);
+        } catch (err) {
+          console.warn('[profiles] Backend profile save failed; saving locally so player can continue:', err);
+        }
       }
     }
 

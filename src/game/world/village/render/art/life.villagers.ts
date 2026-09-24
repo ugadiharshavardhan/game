@@ -163,17 +163,29 @@ export async function buildWalkers(a: ArtContext, grid: NavGrid): Promise<Life |
     update(dt: number) {
       const player = a.shared.player;
       const goHome = a.shared.goingHome;
-      for (const w of walkers) {
+      for (let idx = 0; idx < walkers.length; idx++) {
+        const w = walkers[idx];
         if (w.indoors) {
           // They come back out when the moon has gone, and pick up where they left off.
           if (goHome) continue;
           w.indoors = false;
           w.headingHome = false;
-          w.at.set(w.home.x, 0, w.home.z);
-          w.person.group.position.copy(w.at);
-          w.path = [];
+          // Stagger spawn positions away from the door so multiple family members never overlap
+          const sideOffset = ((idx % 3) - 1) * 1.35;
+          const fwdOffset = 1.8 + (idx % 2) * 1.2;
+          const doorAngle = w.home.yaw ?? 0;
+          const spawnX = w.home.x + Math.sin(doorAngle) * fwdOffset - Math.cos(doorAngle) * sideOffset;
+          const spawnZ = w.home.z + Math.cos(doorAngle) * fwdOffset + Math.sin(doorAngle) * sideOffset;
+          const clear = free(grid, spawnX, spawnZ);
+          w.at.set(clear.x, 0, clear.z);
+          w.person.group.position.set(clear.x, a.ground?.heightAt(clear.x, clear.z) ?? 0, clear.z);
+          w.yaw = doorAngle;
+          w.person.group.rotation.y = w.yaw;
+          // Immediately give them a wander path out into the street rather than standing on top of each other
+          w.path = wander(grid, w.beat, w.at, w.breed.range);
           w.step = 0;
-          rest(w);
+          if (w.path.length) walk(w);
+          else rest(w);
         }
         if (w.at.distanceToSquared(player) > CULL * CULL) {
           // Too far to see. If the signs have come they are simply home by the time you get there.
@@ -231,6 +243,34 @@ export async function buildWalkers(a: ArtContext, grid: NavGrid): Promise<Life |
         w.yaw += wrap(want - w.yaw) * Math.min(dt * 3, 1);
         w.person.group.rotation.y = w.yaw;
         w.person.update(dt);
+      }
+
+      // Mutual collision avoidance: keep characters naturally spaced apart, never overlapping
+      for (let i = 0; i < walkers.length; i++) {
+        const wi = walkers[i];
+        if (wi.indoors) continue;
+        for (let j = i + 1; j < walkers.length; j++) {
+          const wj = walkers[j];
+          if (wj.indoors) continue;
+          const dx = wj.at.x - wi.at.x;
+          const dz = wj.at.z - wi.at.z;
+          const distSq = dx * dx + dz * dz;
+          const minDist = 1.3;
+          if (distSq < minDist * minDist && distSq > 1e-4) {
+            const dist = Math.sqrt(distSq);
+            const push = (minDist - dist) * 0.5;
+            const nx = dx / dist;
+            const nz = dz / dist;
+            wi.at.x -= nx * push;
+            wi.at.z -= nz * push;
+            wj.at.x += nx * push;
+            wj.at.z += nz * push;
+            wi.person.group.position.x = wi.at.x;
+            wi.person.group.position.z = wi.at.z;
+            wj.person.group.position.x = wj.at.x;
+            wj.person.group.position.z = wj.at.z;
+          }
+        }
       }
     },
 

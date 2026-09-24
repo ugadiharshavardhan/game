@@ -127,6 +127,25 @@ export class SoundFx {
       buffer.copyToChannel(data as Float32Array<ArrayBuffer>, 0);
       bank.addBuffer(`fx:${key}`, buffer);
     }
+
+    // Replace door opening sound with the custom audio file in assets/audio/door-opening-soiund.mp3
+    if (typeof fetch !== 'undefined') {
+      const doorUrl = `${import.meta.env.BASE_URL}assets/audio/door-opening-soiund.mp3`;
+      fetch(doorUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then((arr) => bank.context.decodeAudioData(arr))
+        .then((decoded) => {
+          bank.setBuffer('fx:door-open', decoded);
+        })
+        .catch((err) => {
+          if (import.meta.env.DEV) {
+            console.debug('[audio] Custom door sound not available, using synthetic fallback:', err);
+          }
+        });
+    }
   }
 
   play(key: SoundKey, volume = 1, rate = 1): void {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getAuthenticatedUser } from '../../net/jwtAuth';
 import type { PlayerProfile, SessionPlayer, TeamSnapshot } from '../../shared/multiplayer';
 import type { LeaderboardEntry, RunResult } from '../../shared/types';
 import { formatDuration, saveScore } from '../leaderboard';
@@ -34,10 +35,23 @@ export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, o
   // The round's own roster, kept live by the team channel while teammates finish.
   const round = sessionId && team?.session?.id === sessionId ? team : null;
 
+  const authUser = getAuthenticatedUser();
+  const displayName = profile?.displayName || authUser.displayName || 'Devotee';
+  const email = authUser.email;
+
   // The device's own list is kept whatever the network does, so a solo player always has one.
   const local = useMemo(
-    () => saveScore({ score: result.breakdown.total, durationMs: stats.durationMs, playedAt: result.completedAt }),
-    [result.breakdown.total, stats.durationMs, result.completedAt],
+    () =>
+      saveScore({
+        score: result.breakdown.total,
+        durationMs: stats.durationMs,
+        playedAt: result.completedAt,
+        displayName,
+        email: email ?? undefined,
+        campus: profile?.campus,
+        pujaComplete: stats.pujaComplete,
+      }),
+    [result.breakdown.total, stats.durationMs, result.completedAt, displayName, email, profile?.campus, stats.pujaComplete],
   );
 
   // While you are reading your score your teammates are still out there. Their ghosts keep
@@ -107,6 +121,16 @@ export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, o
             ? `${profile ? `${profile.displayName} — every` : 'Every'} offering is before Bappa. Ganpati Bappa Morya!`
             : `It is five o’clock and the village is waking. ${missingKinds(stats)} Come back tonight.`}
         </p>
+
+        {email && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-lamp-400/30 bg-night-900/90 px-3.5 py-1 text-xs text-lamp-200 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span>
+              Evaluated for: <strong className="text-lamp-300">{displayName}</strong>{' '}
+              <span className="text-dusk-400">({email})</span>
+            </span>
+          </div>
+        )}
 
         <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-2 text-left text-xs">
           {facts.map(([k, v]) => (

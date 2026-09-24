@@ -370,11 +370,15 @@ export class ThirdPersonCamera {
 
   private shouldAutoRecenter(): boolean {
     const c = this.config;
+    if (c.recenterMode === 'off') return false;
     const source = this.input.lookSource;
     const allowed = c.recenterMode === 'always' || (c.recenterMode === 'controller' && source !== null && source !== 'mouse');
-    if (!allowed || this.lookIdle < c.recenterDelay || this.target.planarSpeed < 0.5) return false;
-    // Walking toward the camera: swinging round would spin the view, so leave it.
-    return Math.abs(wrapAngle(this.target.yaw - this.targetYaw)) < 120 * DEG;
+    if (!allowed || this.lookIdle < c.recenterDelay || this.target.planarSpeed < 0.25) return false;
+    if (c.recenterMode === 'controller') {
+      // Walking toward the camera: swinging round would spin the view, so leave it.
+      return Math.abs(wrapAngle(this.target.yaw - this.targetYaw)) < 120 * DEG;
+    }
+    return true;
   }
 
   // ---- 3. framing ----------------------------------------------------------------------------

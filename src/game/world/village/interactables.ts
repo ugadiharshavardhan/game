@@ -175,3 +175,48 @@ export class VillagerTalk implements IInteractable {
     this.next++;
   }
 }
+
+/**
+ * The Darshan point at the village Ganesh pandal.
+ * Allows devotees to pray and inspect the 3D Ganesh model up close.
+ */
+export class PandalDarshan implements IInteractable {
+  readonly id = 'pandal:darshan';
+  readonly kind = 'temple' as const;
+  readonly position: Vector3;
+  readonly promptAnchor: Vector3;
+  readonly interactRadius = 3.2;
+  readonly priority = 4;
+
+  constructor(position: Vector3) {
+    this.position = position;
+    this.promptAnchor = position.clone().setY(position.y + 1.4);
+  }
+
+  isAvailable(): boolean {
+    return true;
+  }
+
+  prompt(): PromptText {
+    return {
+      verb: 'Darshan',
+      mobileVerb: 'DARSHAN',
+      detail: 'View Ganesh 3D Model',
+      enabled: true,
+    };
+  }
+
+  action(): PlayerAction {
+    return PlayerAction.Interact;
+  }
+
+  sound(): SoundKey {
+    return 'bell';
+  }
+
+  interact(): void {
+    EventBus.emit('ui:ganesh-modal', { open: true });
+    EventBus.emit('ui:toast', { text: 'Ganpati Bappa Morya! 🙏', tone: 'good' });
+  }
+}
+

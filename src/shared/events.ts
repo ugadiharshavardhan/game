@@ -135,6 +135,8 @@ export interface GameEventMap {
   'ui:map-spots': { spots: MapSpot[] };
   /** The short guided walk: what to do now, or null when it is over. */
   'ui:tutorial': { step: number; total: number; title: string; hint: string; done?: boolean } | null;
+  /** Modal showing the interactive 3D Ganesh model in the village pandal. */
+  'ui:ganesh-modal': { open: boolean };
 
   // ---- React -> engine -------------------------------------------------
   /** Pause is React-owned; the engine only obeys. */

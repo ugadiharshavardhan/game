@@ -89,9 +89,13 @@ export interface RunResult {
   completedAt: number;
 }
 
-/** One line on the local best-scores list. */
+/** One line on the best-scores list. */
 export interface LeaderboardEntry {
   score: number;
   durationMs: number;
   playedAt: number;
+  displayName?: string;
+  email?: string;
+  campus?: string;
+  pujaComplete?: boolean;
 }

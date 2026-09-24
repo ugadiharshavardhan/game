@@ -107,20 +107,57 @@ export function InventoryUI({ open, onClose, snapshot, icons, device }: Inventor
         className="safe-bottom w-full max-w-md animate-[bag-in_200ms_ease-out] rounded-t-3xl border border-night-700 bg-night-900/92 p-5 shadow-2xl shadow-black/50 outline-none backdrop-blur-md sm:w-96 sm:rounded-3xl"
       >
         <header className="flex items-baseline justify-between">
-          <h2 className="font-display text-xl text-lamp-200">Offerings bag</h2>
+          <div>
+            <h2 className="font-display text-xl text-lamp-200">Offerings bag</h2>
+            <p className="text-[11px] text-dusk-400">Carry items from the village to the temple altar</p>
+          </div>
           <p className="text-xs tabular-nums text-dusk-400">
-            <span className="text-base text-lamp-200">{snapshot.used}</span> / {snapshot.capacity}
+            <span className="text-base font-semibold text-lamp-200">{snapshot.used}</span> / {snapshot.capacity}
           </p>
         </header>
 
         {/* Capacity: one segment per item the bag holds. */}
-        <div className="mt-3 flex gap-0.5" aria-label={`${snapshot.used} of ${snapshot.capacity} carried`}>
+        <div className="mt-2.5 flex gap-0.5" aria-label={`${snapshot.used} of ${snapshot.capacity} carried`}>
           {Array.from({ length: snapshot.capacity }, (_, i) => (
             <span key={i} className={`h-1.5 flex-1 rounded-full ${i < snapshot.used ? (snapshot.used >= snapshot.capacity ? 'bg-dusk-400' : 'bg-lamp-400') : 'bg-night-700'}`} />
           ))}
         </div>
 
-        <div className="mt-4 grid grid-cols-4 gap-2">
+        {/* Detailed 3-part Puja Progress Banner */}
+        {(() => {
+          let totalReq = 0;
+          let totalOffered = 0;
+          let totalNeed = 0;
+          for (const id of ITEM_IDS) {
+            const req = ITEMS[id].required;
+            const off = snapshot.offered[id];
+            const inB = stacks.find((s) => s.id === id)?.quantity ?? 0;
+            totalReq += req;
+            totalOffered += Math.min(off, req);
+            totalNeed += Math.max(0, req - (off + inB));
+          }
+          return (
+            <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-night-700/80 bg-night-950/70 p-2 text-center text-xs">
+              <div className="rounded-lg bg-night-900/60 p-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-emerald-400 font-medium">Offered</span>
+                <span className="font-display text-base font-bold tabular-nums text-emerald-300">{totalOffered}</span>
+                <span className="text-[9px] text-dusk-400"> / {totalReq}</span>
+              </div>
+              <div className="rounded-lg bg-night-900/60 p-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-lamp-400 font-medium">In Bag</span>
+                <span className="font-display text-base font-bold tabular-nums text-lamp-300">{snapshot.used}</span>
+                <span className="text-[9px] text-dusk-400"> / {snapshot.capacity}</span>
+              </div>
+              <div className="rounded-lg bg-night-900/60 p-1.5">
+                <span className="block text-[9px] uppercase tracking-wider text-[#e69b82] font-medium">Need to Find</span>
+                <span className="font-display text-base font-bold tabular-nums text-[#f2ad99]">{totalNeed}</span>
+                <span className="text-[9px] text-dusk-400"> left</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        <div className="mt-3.5 grid grid-cols-4 gap-2">
           {slots.map((s, i) => (
             <button
               key={i}
@@ -128,8 +165,8 @@ export function InventoryUI({ open, onClose, snapshot, icons, device }: Inventor
               onClick={() => setSelected(i)}
               aria-label={s ? `${ITEMS[s.id].name}, ${s.quantity}` : 'Empty slot'}
               className={`relative grid aspect-square place-items-center rounded-2xl border transition ${
-                i === selected ? 'border-lamp-400 bg-night-800 ring-2 ring-lamp-400/30' : 'border-night-700 bg-night-950/60'
-              } ${s ? '' : 'opacity-50'}`}
+                i === selected ? 'border-lamp-400 bg-night-800 ring-2 ring-lamp-400/30' : 'border-night-700 bg-night-950/60 hover:border-night-600'
+              } ${s ? '' : 'opacity-40'}`}
             >
               {s && (
                 <>
@@ -141,41 +178,87 @@ export function InventoryUI({ open, onClose, snapshot, icons, device }: Inventor
           ))}
         </div>
 
-        <section className="mt-4 min-h-[5.5rem] rounded-2xl border border-night-700/80 bg-night-950/50 p-3">
+        <section className="mt-3.5 min-h-[5.5rem] rounded-2xl border border-night-700/80 bg-night-950/50 p-3">
           {current ? (
             <div className="flex gap-3">
               <ItemIcon id={current.id} icons={icons} className="h-14 w-14 shrink-0 text-4xl" />
-              <div className="min-w-0">
-                <p className="font-display text-lamp-200">
-                  {ITEMS[current.id].name} <span className="text-sm text-dusk-400">×{current.quantity}</span>
-                </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-display text-lamp-200">
+                    {ITEMS[current.id].name} <span className="text-sm text-dusk-400">×{current.quantity}</span>
+                  </p>
+                  <span className="rounded bg-lamp-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-lamp-300">
+                    In Bag: ×{current.quantity}
+                  </span>
+                </div>
                 <p className="mt-1 text-xs leading-snug text-lamp-200/70">{ITEMS[current.id].description}</p>
-                <p className="mt-1.5 text-[11px] text-dusk-400">
-                  Bappa has {snapshot.offered[current.id]} of {ITEMS[current.id].required}
-                  {needed(current.id) > 0 ? ` · offer these at the temple` : ' · complete'}
-                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="rounded-md bg-night-900 px-2 py-0.5 text-emerald-400">
+                    Offered: {snapshot.offered[current.id]} of {ITEMS[current.id].required}
+                  </span>
+                  {needed(current.id) > 0 ? (
+                    <span className="rounded-md bg-lamp-400/15 px-2 py-0.5 text-lamp-300">
+                      Deliver to temple altar
+                    </span>
+                  ) : (
+                    <span className="rounded-md bg-emerald-400/15 px-2 py-0.5 text-emerald-300">
+                      ✓ Offering complete
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <p className="py-5 text-center text-xs text-dusk-400">{stacks.length ? 'An empty slot.' : 'The bag is empty — the village has what the puja needs.'}</p>
+            <div className="py-2.5 text-center text-xs text-dusk-400">
+              {stacks.length ? (
+                <p>An empty slot. Pick up more offerings from the village.</p>
+              ) : (
+                <div>
+                  <p className="font-medium text-lamp-200/80">The bag is empty — time to gather offerings.</p>
+                  <p className="mt-1 text-[11px] text-dusk-400">
+                    Check gardens for flowers & durva, shops for coconuts & modaks, and porches for diyas.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </section>
 
-        <h3 className="mt-4 text-[10px] uppercase tracking-[0.25em] text-dusk-400">Tonight’s puja</h3>
+        <div className="mt-4 flex items-center justify-between">
+          <h3 className="text-[10px] uppercase tracking-[0.25em] text-dusk-400">Tonight’s puja checklist</h3>
+          <span className="text-[10px] text-dusk-400/80">Tap to inspect</span>
+        </div>
         <ul className="mt-2 grid grid-cols-7 gap-1">
           {ITEM_IDS.map((id) => {
             const req = ITEMS[id].required;
             const got = snapshot.offered[id];
             const inBag = stacks.find((s) => s.id === id)?.quantity ?? 0;
             const done = got >= req;
+            const remainingToFind = Math.max(0, req - (got + inBag));
+            const isSelected = current?.id === id;
             return (
-              <li key={id} className="flex flex-col items-center gap-0.5" title={`${ITEMS[id].name}: ${got} offered, ${inBag} in bag, ${req} needed`}>
-                <span className={`grid h-9 w-9 place-items-center rounded-xl ${done ? 'bg-lamp-400/20 ring-1 ring-lamp-400/60' : 'bg-night-950/60'}`}>
-                  <ItemIcon id={id} icons={icons} className={`h-8 w-8 text-lg ${done || inBag ? '' : 'opacity-40 grayscale'}`} />
-                </span>
-                <span className={`text-[10px] tabular-nums ${done ? 'text-lamp-400' : 'text-lamp-200/70'}`}>
-                  {done ? '✓' : `${got + inBag}/${req}`}
-                </span>
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const slotIdx = slots.findIndex((s) => s?.id === id);
+                    if (slotIdx >= 0) setSelected(slotIdx);
+                  }}
+                  className={`flex w-full flex-col items-center gap-0.5 rounded-xl p-1 transition ${
+                    isSelected ? 'ring-2 ring-lamp-400 bg-night-800' : 'hover:bg-night-900/60'
+                  }`}
+                  title={`${ITEMS[id].name}: ${got} offered at temple, ${inBag} in bag, ${remainingToFind} still needed`}
+                >
+                  <span className={`grid h-9 w-9 place-items-center rounded-xl ${done ? 'bg-emerald-500/20 ring-1 ring-emerald-400/60' : inBag > 0 ? 'bg-lamp-400/20 ring-1 ring-lamp-400/60' : 'bg-night-950/60'}`}>
+                    <ItemIcon id={id} icons={icons} className={`h-8 w-8 text-lg ${done || inBag ? '' : 'opacity-40 grayscale'}`} />
+                  </span>
+                  <span className={`text-[10px] font-semibold tabular-nums ${done ? 'text-emerald-400' : inBag > 0 ? 'text-lamp-300' : 'text-lamp-200/60'}`}>
+                    {done ? '✓' : inBag > 0 ? `${got}+${inBag}` : `${got}/${req}`}
+                  </span>
+                  <span className="text-[8px] uppercase tracking-tighter text-dusk-400">
+                    {done ? 'Done' : inBag > 0 ? 'In Bag' : `Need ${remainingToFind}`}
+                  </span>
+                </button>
               </li>
             );
           })}

@@ -166,10 +166,11 @@ export class Engine {
     const nightConfig = this.options.tutorial ? TUTORIAL_NIGHT : DEFAULT_NIGHT_CONFIG;
     const gameplay = (this.gameplay = new Gameplay(physics, sounds, this.ambience, seed, moonConfig, nightConfig));
     if (session?.elapsed) {
-      // The night first, then the moon through the gate that night leaves open: a player who
-      // joins a team's village late arrives at the same hour, under the same sky, as everyone in it.
-      gameplay.night.windForward(session.elapsed);
-      gameplay.moon.windForward(session.elapsed, {
+      // The night first, then the moon through the gate that night leaves open.
+      // Cap at safe night duration so stale timestamps never spawn into morning.
+      const safeElapsed = Math.min(Math.max(session.elapsed, 0), nightConfig.seconds * Math.max(nightConfig.dawn - 0.08, 0.5));
+      gameplay.night.windForward(safeElapsed);
+      gameplay.moon.windForward(safeElapsed, {
         ticking: gameplay.night.moonTicking,
         mayRise: gameplay.night.moonMayRise,
       });
@@ -221,7 +222,12 @@ export class Engine {
       world.spawnYaw,
     );
     this.player.sheltered = () => world.shelter?.isSafe ?? false;
-    this.cameraRig = new ThirdPersonCamera(this.camera, this.player, this.input, this.physics, DEFAULT_CAMERA_CONFIG);
+    this.cameraRig = new ThirdPersonCamera(this.camera, this.player, this.input, this.physics, {
+      ...DEFAULT_CAMERA_CONFIG,
+      recenterMode: 'always',
+      recenterDelay: 0.12,
+      recenterTime: 0.55,
+    });
     if (this.pendingCameraSettings) this.cameraRig.setUserSettings(this.pendingCameraSettings);
     // Footsteps: the synthesised surfaces, and somewhere to ask what is underfoot.
     this.player.audio.useSounds(sounds);
@@ -476,6 +482,7 @@ export class Engine {
     await Promise.all([
       this.bank.load('step', range('footstep_grass')),
       this.bank.load('stepSoft', range('footstep_carpet')),
+      this.bank.load('walkAudio', [a('walking_audio')]).catch(() => null),
       this.bank.load('cloth', [1, 2, 3, 4].map((i) => a(`cloth${i}`))),
     ]);
   }

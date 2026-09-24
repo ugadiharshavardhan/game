@@ -94,8 +94,16 @@ export function NameGate({ initialName = '', initialCampus = '', loading = false
             maxLength={16}
             onChange={(e) => setTypedName(e.target.value)}
             placeholder="Harsha"
-            className="mt-2 w-full rounded-xl border border-night-700 bg-night-950/70 px-4 py-3 font-display text-lg text-lamp-200 placeholder:text-dusk-400/50 focus:border-lamp-400 focus:outline-none"
+            className={`mt-2 w-full rounded-xl border bg-night-950/70 px-4 py-3 font-display text-lg text-lamp-200 placeholder:text-dusk-400/50 focus:outline-none transition ${
+              error ? 'border-red-500/80 ring-2 ring-red-500/30' : 'border-night-700 focus:border-lamp-400'
+            }`}
           />
+          {error && (
+            <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-950/60 p-2.5 text-xs text-red-200 animate-in fade-in duration-200">
+              <span className="text-red-400 text-sm">⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
 
           <label className="mt-5 block text-[10px] uppercase tracking-[0.3em] text-dusk-400" htmlFor="player-campus">
             Campus <span className="tracking-normal text-dusk-400/60">· optional</span>
@@ -114,8 +122,6 @@ export function NameGate({ initialName = '', initialCampus = '', loading = false
               <option key={c} value={c} />
             ))}
           </datalist>
-
-          {error && <p className="mt-4 text-xs text-[#d98a7a]">{error}</p>}
           <button
             type="submit"
             disabled={!ready}

@@ -13,7 +13,7 @@
  * Collision parity: the stage (7 × 0.7 × 2.5 m), the six poles and the two side walls are the
  * solids in solids.ts → landmarkSolids('pandal'); everything else is overhead or soft cloth.
  */
-import { BoxGeometry, BufferGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group, Matrix4, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, BufferGeometry, Color, ConeGeometry, CylinderGeometry, Float32BufferAttribute, Group, Matrix4, Quaternion, SphereGeometry, TorusGeometry, Vector3 } from 'three';
 import type { LandmarkDef } from '../../types';
 import { rng } from './canvasTextures';
 import { clothGrid, pleated, tassel, valance } from './festival.cloth';
@@ -386,8 +386,8 @@ function stageThings(a: ArtContext, d: FestBatch, orn: Ornaments, M: Matrix4): v
   skirt(1.05, 0.3, place(0, seat + 0.005, cz + 0.376));
   for (const s of [-1, 1]) skirt(0.75, 0.24, place(s * 0.526, seat + 0.005, cz, s * Math.PI / 2));
   heap(d, place(0, seat + 0.006, cz - 0.02), 0.3, 0.04, C.rice);
-  // Bappa has come home: seated on the rice, face still veiled in silk until the installation.
-  coveredMurti(d, orn, Wp, 0, seat + 0.03, cz - 0.04);
+  // Bappa has come home: seated in majestic 3D form on the chowki.
+  ganeshMurti3D(d, orn, Wp, 0, seat + 0.03, cz - 0.04);
   for (const [x, z] of [[-0.44, 0.3], [0.44, 0.3]] as const) hibiscus(d, place(x, seat + 0.006, cz + z, 0.6));
   orn.garland(Wp(catenary(new Vector3(-0.5, seat - 0.02, cz + 0.4), new Vector3(0.5, seat - 0.02, cz + 0.4), 0.16, 14)));
 
@@ -437,61 +437,172 @@ function stageThings(a: ArtContext, d: FestBatch, orn: Ornaments, M: Matrix4): v
 // ---- The murti --------------------------------------------------------------------------------------
 
 /**
- * The Ganesha murti as it is brought home: seated, its face covered with a saffron silk cloth until
- * the pranapratishtha. The drape falls from the crown's point over the broad ears and the curve of
- * the trunk, pools in folds on the rice, and is edged with gold zari; a marigold garland rests on it.
+ * The majestic 3D Ganesha Murti in the village pandal (Ganesh GG representation).
+ * Seated on a double lotus pedestal with crown (Kiritamukuta), graceful trunk sweeping left
+ * with modak, four arms holding sacred attributes, golden ornaments and radiant aura (Prabhavali).
  */
-function coveredMurti(d: FestBatch, orn: Ornaments, Wp: ToWorldPts, x: number, y: number, z: number): void {
-  // Silhouette under the cloth: [radius, height] from the seat up to the crown's tip (~1.2 m).
-  const profile: [number, number][] = [
-    [0.001, 0], [0.43, 0], [0.45, 0.03], [0.43, 0.1], [0.37, 0.19], [0.33, 0.3], [0.35, 0.42], [0.31, 0.55],
-    [0.3, 0.64], [0.25, 0.73], [0.3, 0.8], [0.32, 0.88], [0.28, 0.96], [0.2, 1.03], [0.13, 1.09], [0.06, 1.16], [0.02, 1.2], [0.001, 1.21],
+function ganeshMurti3D(d: FestBatch, orn: Ornaments, Wp: ToWorldPts, x: number, y: number, z: number): void {
+  const gold = '#d7a443';
+  const brightGold = '#fcd34d';
+  const saffron = '#e8842a';
+  const vermilion = '#c23328';
+  const claySkin = '#c47854';
+  const ivory = '#fffbee';
+
+  // 1. Double Lotus Base Pedestal (Padmasana seat on the altar)
+  d.add('brass', lathe([[0.001, 0], [0.46, 0], [0.48, 0.04], [0.44, 0.08], [0.46, 0.12], [0.42, 0.14]], 24).translate(x, y, z), gold);
+  // Red velvet cushion atop the lotus base
+  d.add('cloth', new CylinderGeometry(0.40, 0.42, 0.05, 24).translate(x, y + 0.165, z), vermilion);
+
+  // 2. Crossed Legs in Padmasana posture draped in festive saffron silk Dhoti with gold zari
+  d.add('cloth', lathe([[0.001, 0], [0.38, 0.01], [0.36, 0.06], [0.32, 0.13], [0.001, 0.14]], 20).translate(x, y + 0.18, z), saffron);
+  // Folded knees on either side
+  d.add('cloth', new SphereGeometry(0.12, 12, 10).scale(1.4, 0.7, 1.0).translate(x - 0.28, y + 0.22, z + 0.04), saffron);
+  d.add('cloth', new SphereGeometry(0.12, 12, 10).scale(1.4, 0.7, 1.0).translate(x + 0.28, y + 0.22, z + 0.04), saffron);
+  // Golden border trim along the dhoti folds
+  d.add('brass', new TorusGeometry(0.35, 0.015, 8, 24).rotateX(Math.PI / 2).translate(x, y + 0.22, z + 0.02), gold);
+  // Sacred golden lotus feet & anklets (payal)
+  d.add('brass', new TorusGeometry(0.04, 0.008, 8, 16).rotateX(Math.PI / 2).translate(x - 0.12, y + 0.20, z + 0.22), brightGold);
+  d.add('paint', new SphereGeometry(0.045, 10, 8).scale(1, 0.6, 1.4).translate(x - 0.12, y + 0.20, z + 0.24), claySkin);
+  d.add('brass', new TorusGeometry(0.04, 0.008, 8, 16).rotateX(Math.PI / 2).translate(x + 0.12, y + 0.20, z + 0.22), brightGold);
+  d.add('paint', new SphereGeometry(0.045, 10, 8).scale(1, 0.6, 1.4).translate(x + 0.12, y + 0.20, z + 0.24), claySkin);
+
+  // 3. Sacred Pot-Belly (Lambodara)
+  d.add('paint', new SphereGeometry(0.24, 18, 14).scale(1.05, 0.95, 1.15).translate(x, y + 0.35, z + 0.03), claySkin);
+  // Golden serpent belt (Nagabandha) around Bappa's waist
+  d.add('brass', new TorusGeometry(0.24, 0.014, 8, 24).rotateX(Math.PI / 2.3).translate(x, y + 0.31, z + 0.05), brightGold);
+
+  // 4. Divine Torso & Chest
+  d.add('paint', lathe([[0.001, 0], [0.22, 0.02], [0.26, 0.14], [0.28, 0.22], [0.24, 0.28], [0.001, 0.29]], 18).translate(x, y + 0.38, z - 0.01), claySkin);
+  // Sacred Golden Thread (Yajnopavita) crossing from left shoulder to right waist
+  d.add('brass', new TorusGeometry(0.27, 0.009, 8, 24).rotateX(Math.PI / 3).rotateZ(0.6).translate(x, y + 0.49, z + 0.03), brightGold);
+  // Royal layered pearl/gold necklace (Kanthi Har) with gemstone pendant
+  d.add('brass', new TorusGeometry(0.18, 0.012, 8, 20).rotateX(Math.PI / 2.6).translate(x, y + 0.58, z + 0.06), gold);
+  d.add('paint', new SphereGeometry(0.025, 8, 8).translate(x, y + 0.52, z + 0.17), vermilion);
+
+  // 5. Sacred Elephant Head (Gajanana)
+  // Cranial lobes (Kumbha) & head
+  d.add('paint', new SphereGeometry(0.17, 16, 14).scale(1.15, 1.05, 1.1).translate(x, y + 0.72, z + 0.02), claySkin);
+  d.add('paint', new SphereGeometry(0.09, 10, 8).translate(x - 0.07, y + 0.81, z + 0.06), claySkin);
+  d.add('paint', new SphereGeometry(0.09, 10, 8).translate(x + 0.07, y + 0.81, z + 0.06), claySkin);
+
+  // Auspicious Red Sindoor Tilak / Trishul on forehead
+  d.add('paint', new CylinderGeometry(0.014, 0.014, 0.07, 8).translate(x, y + 0.78, z + 0.15), vermilion);
+  d.add('paint', new CylinderGeometry(0.008, 0.008, 0.05, 8).rotateZ(Math.PI / 2).translate(x, y + 0.76, z + 0.15), brightGold);
+
+  // Wide Elephant Ears (Supa-karna) angled forward
+  for (const s of [-1, 1]) {
+    const ear = new CylinderGeometry(0.16, 0.13, 0.018, 16).scale(1.2, 0.8, 1);
+    ear.rotateY(s * 0.45);
+    ear.rotateZ(s * 0.15);
+    ear.translate(x + s * 0.22, y + 0.72, z - 0.02);
+    d.add('paint', ear, claySkin);
+    // Golden ear cuffs / ornaments (kundala)
+    d.add('brass', new TorusGeometry(0.035, 0.008, 8, 16).translate(x + s * 0.32, y + 0.64, z - 0.01), brightGold);
+  }
+
+  // Sacred Tusks: Broken right tusk (Ekadanta) and full left tusk
+  // Right broken tusk
+  d.add('paint', new CylinderGeometry(0.02, 0.018, 0.06, 8).rotateX(Math.PI / 3).translate(x + 0.08, y + 0.63, z + 0.14), ivory);
+  // Left full curved tusk
+  d.add('paint', new ConeGeometry(0.022, 0.12, 10).rotateX(Math.PI / 2.6).rotateY(-0.15).translate(x - 0.08, y + 0.62, z + 0.17), ivory);
+
+  // 6. Graceful Curved Trunk (Vakratunda) sweeping down and curving to the left
+  const trunkSegs: [number, number, number, number][] = [
+    [0.0, 0.68, 0.15, 0.075],
+    [-0.01, 0.61, 0.18, 0.065],
+    [-0.03, 0.54, 0.20, 0.055],
+    [-0.06, 0.47, 0.21, 0.046],
+    [-0.10, 0.42, 0.21, 0.038],
+    [-0.14, 0.42, 0.19, 0.032],
+    [-0.15, 0.45, 0.18, 0.026],
   ];
-  const H = 1.21;
-  const g = lathe(profile, 36);
-  const pos = g.getAttribute('position');
-  const col = new Float32Array(pos.count * 3);
-  const silk = new Color('#e3741f');
-  const deep = new Color('#b8431a');
-  const zari = new Color(C.gold);
-  const c = new Color();
-  for (let i = 0; i < pos.count; i++) {
-    let px = pos.getX(i);
-    const py = pos.getY(i);
-    let pz = pos.getZ(i);
-    const r = Math.hypot(px, pz);
-    if (r < 1e-4) continue;
-    const th = Math.atan2(px, pz); // 0 = front (+z)
-    const t = Math.min(Math.max(py / H, 0), 1); // float32 puts the tip a hair above H
-    // Folds: deep near the hem where the cloth pools, shallow at the crown it hangs from.
-    const foldAmp = 0.055 * (1 - t) ** 1.4 + 0.006;
-    const fold = Math.sin(9 * th + 2 * Math.sin(3 * th) + t * 4);
-    let k = 1 + foldAmp * fold;
-    // The trunk, curving down the front under the cloth; the ears to either side.
-    k += 0.26 * Math.exp(-(((py - 0.72) / 0.1) ** 2)) * Math.max(0, Math.cos(th)) ** 6;
-    k += 0.14 * Math.exp(-(((py - 0.86) / 0.07) ** 2)) * Math.abs(Math.sin(th)) ** 4;
-    px *= k;
-    pz *= k * 0.84;
-    pos.setXYZ(i, px, py, pz);
-    // Silk, darker in the folds' hollows; a gold zari border at the hem and round the shoulders.
-    const hollow = 0.5 - 0.5 * fold;
-    c.copy(silk).lerp(deep, hollow * (0.35 + 0.4 * (1 - t)));
-    if (py < 0.07 || Math.abs(py - 0.6) < 0.018) c.copy(zari).multiplyScalar(0.9 + 0.1 * fold);
-    col.set([c.r, c.g, c.b], i * 3);
+  for (let i = 0; i < trunkSegs.length - 1; i++) {
+    const [x0, y0, z0, r0] = trunkSegs[i];
+    const [x1, y1, z1, r1] = trunkSegs[i + 1];
+    const midX = (x0 + x1) / 2;
+    const midY = (y0 + y1) / 2;
+    const midZ = (z0 + z1) / 2;
+    const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+    const seg = new CylinderGeometry(r1, r0, len, 12);
+    // Align cylinder with segment
+    const dir = new Vector3(x1 - x0, y1 - y0, z1 - z0).normalize();
+    const q = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), dir);
+    seg.applyQuaternion(q);
+    seg.translate(x + midX, y + midY, z + midZ);
+    d.add('paint', seg, claySkin);
   }
-  g.setAttribute('color', new Float32BufferAttribute(col, 3));
-  g.computeVertexNormals();
-  d.add('cloth', g.translate(x, y, z));
-  // A tassel at the crown, and the garland resting over the shoulders down to the lap.
-  d.add('paint', new CylinderGeometry(0.012, 0.03, 0.09, 8).translate(x, y + H + 0.03, z), C.gold);
-  const loop: Vector3[] = [];
-  // Round the back to the front and back again, stopping short of closing (no zero-length span).
-  for (let i = 0; i <= 25; i++) {
-    const a = (i / 26) * Math.PI * 2 + Math.PI / 26;
-    const front = Math.max(0, Math.cos(a));
-    loop.push(new Vector3(x + Math.sin(a) * 0.33, y + 0.64 - 0.3 * front ** 2, z + Math.cos(a) * 0.3 * 0.9 + 0.03 * front));
+  // Golden sweet Modak held at the tip of the trunk!
+  d.add('brass', lathe([[0.001, 0], [0.035, 0], [0.04, 0.02], [0.03, 0.045], [0.001, 0.065]], 12).translate(x - 0.15, y + 0.43, z + 0.18), brightGold);
+
+  // 7. Four Divine Arms (Chaturbhuja)
+  // Upper Right Arm (holding golden Ankusha / Axe)
+  d.add('paint', new CylinderGeometry(0.04, 0.048, 0.24, 10).rotateZ(-0.75).translate(x + 0.26, y + 0.62, z + 0.02), claySkin);
+  d.add('paint', new CylinderGeometry(0.035, 0.04, 0.22, 10).rotateX(0.4).translate(x + 0.35, y + 0.78, z + 0.06), claySkin);
+  d.add('brass', new TorusGeometry(0.04, 0.008, 8, 16).translate(x + 0.26, y + 0.64, z + 0.02), brightGold); // Armlet
+  d.add('brass', new CylinderGeometry(0.008, 0.008, 0.28, 8).translate(x + 0.36, y + 0.88, z + 0.08), brightGold); // Ankusha staff
+  d.add('brass', new BoxGeometry(0.08, 0.06, 0.015).translate(x + 0.39, y + 0.96, z + 0.08), gold); // Ankusha axe blade
+
+  // Upper Left Arm (holding sacred Pasha / Lotus)
+  d.add('paint', new CylinderGeometry(0.04, 0.048, 0.24, 10).rotateZ(0.75).translate(x - 0.26, y + 0.62, z + 0.02), claySkin);
+  d.add('paint', new CylinderGeometry(0.035, 0.04, 0.22, 10).rotateX(0.4).translate(x - 0.35, y + 0.78, z + 0.06), claySkin);
+  d.add('brass', new TorusGeometry(0.04, 0.008, 8, 16).translate(x - 0.26, y + 0.64, z + 0.02), brightGold); // Armlet
+  d.add('brass', new TorusGeometry(0.04, 0.01, 8, 16).translate(x - 0.36, y + 0.90, z + 0.08), brightGold); // Sacred Pasha noose/lotus
+
+  // Lower Right Hand: Abhaya Mudra (blessing gesture)
+  d.add('paint', new CylinderGeometry(0.038, 0.045, 0.22, 10).rotateZ(-0.5).rotateX(0.7).translate(x + 0.25, y + 0.44, z + 0.15), claySkin);
+  // Open blessing palm
+  d.add('paint', new BoxGeometry(0.07, 0.08, 0.025).translate(x + 0.28, y + 0.46, z + 0.24), claySkin);
+  d.add('paint', new SphereGeometry(0.016, 8, 8).translate(x + 0.28, y + 0.46, z + 0.255), vermilion); // Red auspicious blessing symbol
+  d.add('brass', new TorusGeometry(0.038, 0.008, 8, 16).translate(x + 0.27, y + 0.42, z + 0.21), brightGold); // Bangle
+
+  // Lower Left Hand: Holding golden bowl of modaks (Modak-patra)
+  d.add('paint', new CylinderGeometry(0.038, 0.045, 0.22, 10).rotateZ(0.5).rotateX(0.7).translate(x - 0.25, y + 0.44, z + 0.15), claySkin);
+  d.add('brass', lathe([[0.001, 0], [0.06, 0.01], [0.075, 0.03], [0.065, 0.05]], 14).translate(x - 0.24, y + 0.38, z + 0.26), gold); // Golden bowl
+  d.add('brass', new SphereGeometry(0.02, 8, 8).translate(x - 0.24, y + 0.42, z + 0.26), brightGold); // Modak sweet in bowl
+  d.add('brass', new SphereGeometry(0.018, 8, 8).translate(x - 0.22, y + 0.41, z + 0.28), brightGold);
+  d.add('brass', new SphereGeometry(0.018, 8, 8).translate(x - 0.26, y + 0.41, z + 0.27), brightGold);
+
+  // 8. Majestic Royal Crown (Kiritamukuta)
+  d.add('brass', lathe([
+    [0.001, 0],
+    [0.17, 0],
+    [0.18, 0.04],
+    [0.16, 0.08],
+    [0.17, 0.10],
+    [0.14, 0.17],
+    [0.15, 0.19],
+    [0.11, 0.26],
+    [0.08, 0.31],
+    [0.04, 0.36],
+    [0.015, 0.40],
+    [0.001, 0.44],
+  ], 20).translate(x, y + 0.84, z + 0.03), gold);
+  // Red ruby jewel in crown centre
+  d.add('paint', new SphereGeometry(0.024, 8, 8).translate(x, y + 0.90, z + 0.19), vermilion);
+  // Sacred golden kalasa finial atop crown
+  d.add('brass', new SphereGeometry(0.025, 10, 8).translate(x, y + 1.29, z + 0.03), brightGold);
+
+  // 9. Glowing Golden Prabhavali (Radiant Divine Altar Arch behind Bappa)
+  d.add('brass', new TorusGeometry(0.68, 0.035, 12, 32).translate(x, y + 0.85, z - 0.10), gold);
+  d.add('brass', new CylinderGeometry(0.64, 0.64, 0.015, 24).rotateX(Math.PI / 2).translate(x, y + 0.85, z - 0.11), '#fef08a');
+  // Radiant golden sunbeams / flames emanating from Prabhavali
+  for (let i = 0; i < 20; i++) {
+    const a = -0.3 + (i / 19) * (Math.PI + 0.6);
+    const ray = new ConeGeometry(0.035, 0.16, 6);
+    ray.rotateZ(-a + Math.PI / 2);
+    ray.translate(x + Math.cos(a) * 0.72, y + 0.85 + Math.sin(a) * 0.72, z - 0.10);
+    d.add('brass', ray, brightGold);
   }
-  orn.garland(Wp(loop));
+
+  // 10. Auspicious Marigold Garlands framing Bappa's throne
+  const garlandLoop: Vector3[] = [];
+  for (let i = 0; i <= 28; i++) {
+    const a = (i / 28) * Math.PI * 2;
+    const fwd = Math.max(0, Math.cos(a));
+    garlandLoop.push(new Vector3(x + Math.sin(a) * 0.48, y + 0.58 - 0.28 * fwd ** 2, z + Math.cos(a) * 0.36 + 0.10 * fwd));
+  }
+  orn.garland(Wp(garlandLoop));
 }
 
 // ---- Lights ------------------------------------------------------------------------------------
