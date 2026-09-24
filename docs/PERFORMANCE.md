@@ -9,23 +9,55 @@ dishonest frame times. The last section says what still needs a real device.
 
 ## The one knob: quality profiles
 
-`src/game/core/quality.ts` is the only place a performance decision is made. Everything else reads
-a number from it. `auto` picks by pointer type, core count and device memory; the player can
-override it in Settings.
+`src/game/core/quality.ts` fixes what cannot change mid-run; `src/game/core/PerformanceManager.ts`
+adjusts everything else live. Nothing else makes a performance decision.
 
-| | low (phone) | medium (laptop) | high (desktop) |
+**Starting tier (AUTO).** Being a phone is not the same as being slow. A desktop starts HIGH and a
+phone or tablet starts MEDIUM. Only a device that reports ≤ 2 GB of memory or ≤ 2 cores starts one
+tier lower. A player can pick HIGH, MEDIUM or LOW in Settings instead.
+
+| | low | medium | high |
 | --- | --- | --- | --- |
-| Pixel ratio cap | 1 | 1.5 | 2 |
-| Shadows | off | 1536² | 2048² |
-| MSAA | 0 (browser AA) | 2× | 4× |
+| Pixel ratio cap (desktop / phone) | 1 / 1.25 | 1.5 / 1.5 | 2 / 1.5 |
+| Shadow map | 512² | 1024² | 2048² |
+| MSAA (desktop; phones always 0) | 0 | 2× | 4× |
 | Bloom | off | on | on |
-| LOD / cull distances | ×0.68 | ×0.85 | ×1 |
-| Real point lights | 3 | 5 | 6 |
-| Ambient particles | 40 | 90 | 140 |
+| LOD / cull distances | ×0.75 | ×0.9 | ×1 |
+| Real point lights | 2 | 4 | 6 |
+| Ambient particle buffers | 60 | 100 | 140 |
 | Texture width cap | 512 | 1024 | 2048 |
-| Anisotropy | 2 | 4 | 8 |
-| Ghost teammates drawn | 2 | 3 | 3 |
-| Ambience synthesis rate | 16 kHz | 22 kHz | 22 kHz |
+| Ghost teammates drawn | 3 | 3 | 3 |
+
+**Adaptive ladder.** Frame rate is measured over rolling one-second windows, after a four-second
+warm-up that skips shader compiles and texture uploads:
+
+- GOOD is above 50 fps.
+- OK is 35–50 fps. The manager holds still.
+- POOR is below 35 fps.
+
+Two POOR windows in a row step one rung down. After any change the manager waits two seconds
+before judging again. Eight seconds of GOOD step one rung back up. A climb that is followed
+straight away by a fall counts as a regret: each regret doubles the wait, and after three the
+manager stops climbing. The rungs give things up in this order:
+
+1. render scale (pixel ratio × 0.85, then lower)
+2. shadow map size
+3. shadow update rate (every 2nd, 3rd, then 4th frame)
+4. bloom (the composer is bypassed entirely when bloom is off and MSAA is 0)
+5. particles (draw range on the same buffers)
+6. LOD and culling distances
+7. the animation rate of distant villagers and teammates (30 → 10 Hz beyond 14 m, with the
+   skipped time carried over)
+
+AUTO can fall from its starting tier to the bottom of LOW, so a phone goes from MEDIUM to LOW.
+It never climbs above its starting tier. A tier the player chose stays within its own rungs.
+
+Nothing on the ladder removes the temple, a puja item, a door or a teammate. The pixel ratio never
+drops below 0.6.
+
+`?perf=1` on any build shows the live numbers: fps and the worst frame, tier and rung, pixel
+ratio, shadow size and rate, bloom, particles, LOD scale, far-NPC rate, lights, draw calls,
+triangles and heap.
 
 ## Measured
 

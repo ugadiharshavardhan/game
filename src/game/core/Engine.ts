@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   ACESFilmicToneMapping,
+  type DirectionalLight,
   HalfFloatType,
   WebGLRenderTarget,
   PCFShadowMap,
@@ -32,14 +33,14 @@ import type { RemotePeer } from '../../shared/multiplayer';
 import type { QualityLevel } from '../../shared/types';
 import { DEFAULT_MOON_CONFIG } from '../moon/MoonState';
 import { GhostPlayers } from '../multiplayer/GhostPlayers';
-import type { PeerLink } from '../multiplayer/PeerLink';
+import type { LocalPeerState, PeerLink } from '../multiplayer/PeerLink';
 import { buildProceduralClips } from '../player/proceduralClips';
 import { DEFAULT_NIGHT_CONFIG } from '../night/NightClock';
 import { Tutorial, TUTORIAL_MOON, TUTORIAL_NIGHT } from '../tutorial/Tutorial';
 import { Input } from './Input';
 import { Physics } from './Physics';
-import { profileFor, type QualityProfile } from './quality';
-import { ResolutionGovernor } from './ResolutionGovernor';
+import { PerformanceManager } from './PerformanceManager';
+import { type DeviceInfo, detectDevice, pixelCaps, profileFor, type QualityProfile } from './quality';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -91,10 +92,15 @@ export class Engine {
   readonly quality: QualityProfile;
   /** ?perf=1 — the only thing in the shipped build that reports on itself, and only when asked. */
   private readonly reportPerf = typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf');
-  private perfFrames = 0;
   private perfTime = 0;
-  /** Trades pixels for frame rate when this device is not keeping up. */
-  private readonly governor: ResolutionGovernor;
+  private readonly device: DeviceInfo;
+  /** Trades detail for frame rate when this device is not keeping up, and back when it can. */
+  readonly perf: PerformanceManager;
+  private frameNo = 0;
+  /** The sun, whose shadow map the PerformanceManager resizes and paces. */
+  private sun: DirectionalLight | null = null;
+  /** What this player sends teammates each frame: one object, refilled, never reallocated. */
+  private readonly outgoing: LocalPeerState = { x: 0, y: 0, z: 0, yaw: 0, state: 'idle', indoors: false, given: 0 };
   private lastFrameAt = 0;
   private mapTimer = 0;
   private paused = false;
@@ -106,11 +112,16 @@ export class Engine {
   constructor(parent: HTMLElement, options: GameOptions = {}) {
     this.parent = parent;
     this.options = options;
-    this.quality = profileFor(options.quality);
+    this.device = detectDevice();
+    this.quality = profileFor(options.quality, this.device);
+    this.perf = new PerformanceManager({
+      requested: options.quality ?? 'auto',
+      device: this.device,
+      profile: this.quality,
+      caps: pixelCaps(this.device),
+    });
     this.renderer = new WebGLRenderer({ antialias: this.quality.msaa === 0, powerPreference: 'high-performance' });
-    const sharpest = Math.min(window.devicePixelRatio, this.quality.pixelRatio);
-    this.governor = new ResolutionGovernor({ ceiling: sharpest, floor: Math.max(0.5, sharpest * 0.5) });
-    this.renderer.setPixelRatio(sharpest);
+    this.renderer.setPixelRatio(this.perf.live.pixelRatio);
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.74;
@@ -164,7 +175,7 @@ export class Engine {
     const buildWorld = async (): Promise<World> => {
       if (params.get('scene') === 'testbed') return buildTestbed(this.scene, this.renderer, physics);
       const { buildVillage } = await import('../world/village/Village');
-      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality);
+      return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality, this.perf.live);
     };
     const [world, gltf, pores] = await Promise.all([
       buildWorld(),
@@ -177,6 +188,7 @@ export class Engine {
       return;
     }
     this.world = world;
+    this.sun = world.sun ?? null;
     if (pores) applySkinDetail(gltf.scene, pores);
     // The devotee carries no animation of his own: his clips are made here, once, and the
     // teammates' ghosts play the very same ones.
@@ -200,6 +212,7 @@ export class Engine {
       world.spawn,
       world.spawnYaw,
     );
+    this.player.sheltered = () => world.shelter?.isSafe ?? false;
     this.cameraRig = new ThirdPersonCamera(this.camera, this.player, this.input, this.physics, DEFAULT_CAMERA_CONFIG);
     if (this.pendingCameraSettings) this.cameraRig.setUserSettings(this.pendingCameraSettings);
     // Footsteps: the synthesised surfaces, and somewhere to ask what is underfoot.
@@ -243,7 +256,7 @@ export class Engine {
       }
       this.composer.addPass(new OutputPass());
     }
-    this.resize();
+    this.applyQuality();
 
     this.unsubscribers.push(
       EventBus.on('game:pause', () => this.setPaused(true)),
@@ -301,15 +314,15 @@ export class Engine {
     const dt = Math.min(elapsed, 1 / 20);
     if (!this.player || !this.cameraRig || !this.physics || !this.gameplay) return;
     if (!this.paused) {
-      const ratio = this.governor.frame(elapsed);
-      if (ratio !== null) this.setPixelRatio(ratio);
+      if (this.perf.frame(elapsed)) this.applyQuality();
       this.input.update();
       // While the bag is open, the stick and arrows browse it instead of walking.
       if (this.gameplay.inventoryOpen || this.gameplay.mapOpen) {
         this.input.move.set(0, 0);
         this.input.crouchPressed = false;
       }
-      this.gameplay.update(dt, this.input.interactPressed);
+      // Sitting or asleep, E / the action button means nothing: stand up first.
+      this.gameplay.update(dt, this.input.interactPressed && this.player.canInteract);
       // Movement is relative to what the player sees — the follow rig, or an interior's camera.
       this.player.update(dt, this.cameraRig.viewYaw);
       this.physics.step(dt);
@@ -328,43 +341,91 @@ export class Engine {
         EventBus.emit('ui:map-player', { x: this.player.feet.x, z: this.player.feet.z, yaw: this.player.yaw });
       }
       // Teammates: tell them where we are, then draw where they are.
-      this.options.link?.send({
-        x: this.player.feet.x,
-        y: this.player.feet.y,
-        z: this.player.feet.z,
-        yaw: this.player.yaw,
-        state: this.player.state.value,
-        indoors: this.world?.shelter?.isSafe ?? false,
-        given: this.gameplay.inventory.snapshot().stacks.length,
-      });
+      if (this.options.link) {
+        const out = this.outgoing;
+        out.x = this.player.feet.x;
+        out.y = this.player.feet.y;
+        out.z = this.player.feet.z;
+        out.yaw = this.player.yaw;
+        out.state = this.player.state.value;
+        out.indoors = this.world?.shelter?.isSafe ?? false;
+        out.given = this.gameplay.inventory.snapshot().stacks.length;
+        this.options.link.send(out);
+      }
       this.ghosts?.update(dt);
       this.tutorial?.update(dt);
     }
-    if (this.composer) this.composer.render();
+    this.paceShadows();
+    const live = this.perf.live;
+    // With bloom given up and no multisampling, the composer would only copy pixels around.
+    if (this.composer && (live.bloom || this.quality.msaa > 0)) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
     if (this.reportPerf) this.reportPerformance(dt);
   }
 
+  /** The shadow map is redrawn every `shadowEvery` frames; in between, last frame's is reused. */
+  private paceShadows(): void {
+    if (!this.quality.shadows) return;
+    const every = this.perf.live.shadowEvery;
+    const shadows = this.renderer.shadowMap;
+    this.frameNo++;
+    shadows.autoUpdate = every <= 1;
+    if (every > 1 && this.frameNo % every === 0) shadows.needsUpdate = true;
+  }
+
+  /** Puts the PerformanceManager's live settings into the renderer, the sun, bloom and the ghosts. */
+  private applyQuality(): void {
+    const live = this.perf.live;
+    if (this.renderer.getPixelRatio() !== live.pixelRatio) {
+      this.renderer.setPixelRatio(live.pixelRatio);
+      this.composer?.setPixelRatio(live.pixelRatio);
+    }
+    const sun = this.sun;
+    if (sun && sun.shadow.mapSize.x !== live.shadowMapSize) {
+      sun.shadow.mapSize.set(live.shadowMapSize, live.shadowMapSize);
+      // The map is reallocated at the new size on the next shadow pass.
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+    if (this.bloom) this.bloom.enabled = live.bloom;
+    if (this.ghosts) this.ghosts.farHz = live.npcHz;
+    this.resize();
+  }
+
   /**
-   * Twice a second, what this device is actually managing. Off unless the page asked for it, so
-   * it costs nothing in a normal run — and it works in the production build, which is the whole
+   * Twice a second, what this device is actually managing and what the PerformanceManager has
+   * done about it. Off unless the page asked for it (?perf=1), so it
+   * costs nothing in a normal run — and it works in the production build, which is the whole
    * point: it is how the game gets tested on a real phone.
    */
   private reportPerformance(dt: number): void {
-    this.perfFrames++;
     this.perfTime += dt;
     if (this.perfTime < 0.5) return;
+    this.perfTime = 0;
     const info = this.renderer.info;
+    const live = this.perf.live;
     const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
     EventBus.emit('ui:perf', {
-      fps: Math.round(this.perfFrames / this.perfTime),
+      fps: Math.round(this.perf.fps),
+      worstMs: Math.round(this.perf.worstMs),
       calls: info.render.calls,
       triangles: info.render.triangles,
-      quality: this.quality.name,
+      quality: live.tier,
+      requested: this.options.quality ?? 'auto',
+      step: this.perf.rung,
+      steps: this.perf.rungs,
+      pixelRatio: live.pixelRatio,
+      shadowMapSize: live.shadowMapSize,
+      shadowEvery: live.shadowEvery,
+      bloom: live.bloom && !!this.bloom,
+      particles: live.particles,
+      lodScale: live.lodScale,
+      npcHz: live.npcHz,
+      lights: this.quality.lamps,
+      device: this.device.label,
       memoryMb: memory ? Math.round(memory.usedJSHeapSize / 1048576) : null,
     });
-    this.perfFrames = 0;
-    this.perfTime = 0;
   }
 
   /** Dev-only access for automated browser verification (see devtools.ts). */
@@ -388,13 +449,6 @@ export class Engine {
     this.bank.setPaused(paused);
     if (paused) this.input.releasePointer();
     this.timer.reset(); // don't let the paused time land in the next frame
-  }
-
-  /** Draws at a new sharpness: the governor's answer to a device that is not keeping up. */
-  private setPixelRatio(ratio: number): void {
-    this.renderer.setPixelRatio(ratio);
-    this.composer?.setPixelRatio(ratio);
-    this.resize();
   }
 
   private resize(): void {

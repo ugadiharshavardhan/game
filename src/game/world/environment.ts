@@ -176,7 +176,6 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
   disposables.push(stars.geometry, stars.material as PointsMaterial, ...discDisposables(moon));
 
   const lightDir = sunDir.clone();
-  const texel = (o.shadowExtent * 2) / o.shadowMapSize;
   const snapped = new Vector3();
   const moonPos = new Vector3();
 
@@ -186,6 +185,9 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer, o: Envir
     moonDir,
     hemi,
     follow(target: Vector3) {
+      // Snap to whole shadow texels so edges do not crawl as the player walks. The map's size
+      // can change mid-run (the PerformanceManager), so the texel is read, not remembered.
+      const texel = (o.shadowExtent * 2) / sun.shadow.mapSize.x;
       snapped.set(Math.round(target.x / texel) * texel, 0, Math.round(target.z / texel) * texel);
       sun.target.position.copy(snapped);
       sun.position.copy(snapped).addScaledVector(lightDir, 60);

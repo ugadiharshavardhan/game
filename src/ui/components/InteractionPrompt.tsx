@@ -15,7 +15,7 @@ const KEY: Record<InputDevice, string> = { keyboard: 'E', gamepad: 'A', touch: '
  *
  * When the anchor is off screen (or behind the camera) the prompt rests at the bottom centre.
  */
-export function InteractionPrompt({ device }: { device: InputDevice }) {
+export function InteractionPrompt({ device, suppressed = false }: { device: InputDevice; suppressed?: boolean }) {
   const [prompt, setPrompt] = useState<PromptInfo | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -30,7 +30,8 @@ export function InteractionPrompt({ device }: { device: InputDevice }) {
     el.style.top = `${py * 100}%`;
   });
 
-  if (!prompt) return null;
+  // Seated or asleep, nothing can be used: the prompt would promise what the button won't do.
+  if (!prompt || suppressed) return null;
   // On a phone the big INTERACT button lives with the other touch controls; here we only name
   // what it would do, floating over the thing itself.
   const touch = device === 'touch';

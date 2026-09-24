@@ -33,6 +33,34 @@ export interface PromptInfo {
 
 export type InputDevice = 'keyboard' | 'gamepad' | 'touch';
 
+export type PosturePhase = 'standing' | 'sitting-down' | 'sitting' | 'standing-up' | 'lying-down' | 'sleeping' | 'waking';
+
+/** What the performance manager is doing, for the ?perf=1 / dev panel. */
+export interface PerfReport {
+  fps: number;
+  /** Slowest frame in the last window, ms. */
+  worstMs: number;
+  calls: number;
+  triangles: number;
+  /** The quality tier currently in force (after any automatic step down). */
+  quality: string;
+  /** What the player chose: auto, low, medium or high. */
+  requested: string;
+  /** Rung on the adaptive ladder, 0 = the best this device starts at. */
+  step: number;
+  steps: number;
+  pixelRatio: number;
+  shadowMapSize: number;
+  shadowEvery: number;
+  bloom: boolean;
+  particles: number;
+  lodScale: number;
+  npcHz: number;
+  lights: number;
+  device: string;
+  memoryMb: number | null;
+}
+
 export interface GameEventMap {
   // ---- engine -> React -------------------------------------------------
   /** Asset loading progress, 0..1. */
@@ -92,8 +120,13 @@ export interface GameEventMap {
   'ui:touch-stick': { active: boolean; originX: number; originY: number; dx: number; dy: number };
   /** The player went indoors (safe) or came back out. */
   'ui:shelter': { inside: boolean; family: string | null };
-  /** Frame rate and draw calls, twice a second, when the page was opened with ?perf=1. */
-  'ui:perf': { fps: number; calls: number; triangles: number; quality: string; memoryMb: number | null };
+  /**
+   * Sitting and sleeping, phase by phase (standing, sitting-down, sitting, standing-up, lying-down,
+   * sleeping, waking), and whether the player is in a shelter while they do it.
+   */
+  'ui:posture': { phase: PosturePhase; sheltered: boolean };
+  /** Frame rate and what the device is being asked for, twice a second, when opened with ?perf=1 (or dev). */
+  'ui:perf': PerfReport;
   /** Where the player is and which way they face, ten times a second, for the map. */
   'ui:map-player': MapPlayer;
   /** The offerings the player knows about — hinted or found — whenever that changes. */
@@ -116,7 +149,9 @@ export interface GameEventMap {
   /** The map is open: movement input is ignored and the action button waits, like the bag. */
   'game:map-open': { open: boolean };
   /** On-screen buttons for touch devices (and the bag's open/close key). */
-  'input:action': { action: 'interact' | 'crouch' | 'inventory' };
+  'input:action': { action: 'interact' | 'crouch' | 'inventory' | 'jump' | 'sit' | 'sleep' };
+  /** A held on-screen button (RUN): true on press, false on release. */
+  'input:hold': { action: 'run'; down: boolean };
   /** Skip the puja cinematic. */
   'game:skip-cinematic': undefined;
 }

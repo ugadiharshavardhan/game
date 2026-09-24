@@ -12,6 +12,10 @@ import { PlayerAudio } from './PlayerAudio';
 import { PlayerController } from './PlayerController';
 import { buildProceduralClips } from './proceduralClips';
 import { PlayerState, PlayerStateId } from './PlayerState';
+import { Posture, PostureMachine, type PostureContext, type PostureRefusal } from './posture';
+
+/** Steepest ground a lying body is laid along, radians: past it, the ground is refused. */
+const MAX_LIE_PITCH = (10 * Math.PI) / 180;
 
 /**
  * The playable devotee: model + controller + state + animation + audio.
@@ -24,7 +28,18 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   readonly animation: CharacterAnimationController;
   readonly audio: PlayerAudio;
   readonly root = new Group();
+  /** Sitting down, lying down to sleep and getting up (posture.ts). */
+  readonly posture = new PostureMachine();
+  /**
+   * Between the root and the model: lays a sleeping body along gently sloping ground (a few
+   * degrees at most). The lying-down itself is the skeleton's work, never this.
+   */
+  private readonly align = new Group();
+  private lieTilt = 0;
+  /** Whether the player is in a shelter; the HUD words sleep differently indoors. */
+  sheltered: () => boolean = () => false;
   private readonly unsubscribe: () => void;
+  private readonly unsubscribePosture: () => void;
   private readonly input: Input;
   private readonly materials: Material[] = [];
   private hiddenIndoors = false;
@@ -52,7 +67,8 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
       if (o instanceof Mesh) this.materials.push(...(Array.isArray(o.material) ? o.material : [o.material]));
     });
     this.root.name = 'Player';
-    this.root.add(model);
+    this.align.add(model);
+    this.root.add(this.align);
     scene.add(this.root);
 
     this.controller = new PlayerController(physics, config, this.state, spawn, spawnYaw);
@@ -77,7 +93,56 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
       model.getObjectByName('mixamorigRightFoot'),
     );
     this.unsubscribe = this.state.onChange((_, to) => EventBus.emit('ui:player-state', { state: to }));
+    this.unsubscribePosture = this.posture.onChange((_, to) => {
+      this.state.setPosture(this.posture.kind);
+      this.animation.setPosture(to);
+      EventBus.emit('ui:posture', { phase: to, sheltered: this.sheltered() });
+    });
     this.syncModel();
+  }
+
+  /** Only a player on their feet and not asleep can use things. */
+  get canInteract(): boolean {
+    return this.posture.phase === Posture.Standing;
+  }
+
+  /** SIT / STAND. */
+  toggleSit(): void {
+    const ctx = this.postureContext(false);
+    if (!this.posture.isSeated && !this.controller.standFromCrouch()) return this.refuse('headroom');
+    this.refuse(this.posture.toggleSit(ctx));
+  }
+
+  /** SLEEP / WAKE UP. */
+  toggleSleep(): void {
+    if (this.posture.isAsleep) {
+      this.posture.request('wake', this.postureContext(false));
+      return;
+    }
+    if (this.posture.isSeated) return this.refuse('seated');
+    if (this.posture.phase !== Posture.Standing) return;
+    if (!this.controller.standFromCrouch()) return this.refuse('headroom');
+    const space = this.controller.grounded ? this.controller.lieSpace() : null;
+    if (space && !space.ok) return this.refuse(space.reason === 'slope' ? 'slope' : 'no-room');
+    if (space?.ok && Math.abs(space.pitch) > MAX_LIE_PITCH) return this.refuse('slope');
+    const refusal = this.posture.request('sleep', this.postureContext(true));
+    if (!refusal && space?.ok) this.lieTilt = space.pitch;
+    this.refuse(refusal);
+  }
+
+  private postureContext(roomToLie: boolean): PostureContext {
+    return { grounded: this.controller.grounded && !this.controller.airborne, busy: this.state.isBusy, roomToLie };
+  }
+
+  private refuse(reason: PostureRefusal | 'headroom' | 'seated' | 'slope'): void {
+    const text: Partial<Record<NonNullable<typeof reason>, string>> = {
+      'no-room': 'No room to lie down here.',
+      slope: 'Find flat ground to lie down.',
+      headroom: 'No room to stand up here.',
+      seated: 'Stand up first.',
+    };
+    const line = reason ? text[reason] : undefined;
+    if (line) EventBus.emit('ui:toast', { text: line, tone: 'info' });
   }
 
   get feet(): Vector3 {
@@ -168,16 +233,27 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
   }
 
   placeAt(point: Vector3, yaw: number): void {
+    // Carried somewhere (a doorway failsafe, taken indoors by the moon): on your feet when you arrive.
+    this.posture.reset();
     this.controller.teleport(point, yaw);
   }
 
   update(dt: number, cameraYaw: number): void {
-    this.controller.update(dt, this.input, cameraYaw);
+    const input = this.input;
+    if (input.sleepPressed) this.toggleSleep();
+    else if (input.sitPressed) this.toggleSit();
+    this.posture.update(dt);
+    this.controller.update(dt, input, cameraYaw);
     this.syncModel();
     // Asked to come most of the way round from a standstill: the body takes a step rather than
     // rotating on the spot like a turret.
-    if (this.controller.turnedInPlace !== 0) this.animation.turnInPlace(this.controller.turnedInPlace);
+    if (this.controller.turnedInPlace !== 0 && !this.posture.locksMovement) this.animation.turnInPlace(this.controller.turnedInPlace);
+    if (this.controller.launched) this.animation.launched();
+    if (this.controller.landedAt > 0) this.animation.landed(this.controller.landedAt, this.controller.planarSpeed > this.config.walkSpeed);
     this.animation.updateMovementAnimation(dt, this.controller.planarSpeed, this.controller.crouched, this.controller.airborne);
+    // A sleeping body follows the ground's gentle tilt, as much as it is lying down.
+    const tilt = this.posture.isAsleep ? -this.lieTilt : 0;
+    this.align.rotation.x = tilt * this.animation.postureBlend;
     this.swayCloth(dt);
     this.audio.update(this.controller, this.state.value === PlayerStateId.Hidden, dt);
   }
@@ -201,6 +277,7 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
 
   dispose(): void {
     this.unsubscribe();
+    this.unsubscribePosture();
     this.animation.dispose();
     this.root.removeFromParent();
   }

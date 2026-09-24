@@ -48,6 +48,8 @@ const OUTFITS: Record<FolkKind, string[]> = { man: MAN_OUTFITS, woman: WOMAN_OUT
 
 /** Meshes left off: the eyelashes are a draw call nobody at conversation distance can see. */
 const HIDDEN = /Lashes/;
+/** Within this many metres of the player, a person animates every frame. */
+const NEAR = 14;
 
 /** Salt-and-pepper hair for the village elders. */
 export function greyHair(a: ArtContext, m: Material): Material {
@@ -117,11 +119,16 @@ export class Person {
   private prop: Prop | null = null;
   private propName: PropName | null = null;
   private readonly scene: Object3D;
+  private readonly live: { npcHz: number };
+  private readonly player: Vector3;
+  private pending = Math.random() / 30;
 
   constructor(a: ArtContext, char: Character, o: PersonOptions) {
     this.char = char;
     this.kind = o.kind;
     this.scene = a.root;
+    this.live = a.live;
+    this.player = a.shared.player;
     this.model = cloneSkinned(char.scene);
     this.model.traverse((obj) => {
       const mesh = obj as Mesh;
@@ -200,7 +207,15 @@ export class Person {
     // The culler hides the person; the prop is not their child, so it follows.
     if (this.prop) this.prop.object.visible = this.group.visible;
     if (!this.group.visible) return;
-    this.mixer.update(dt);
+    // Beyond conversation distance a person animates at the PerformanceManager's rate, with the
+    // skipped time carried over — slower to update, never slower to move. Staggered by `pending`'s
+    // random start so a crowd does not all pose on the same frame.
+    this.pending += dt;
+    const p = this.group.position;
+    const near = (p.x - this.player.x) ** 2 + (p.z - this.player.z) ** 2 < NEAR * NEAR;
+    if (!near && this.pending < 1 / Math.max(this.live.npcHz, 1)) return;
+    this.mixer.update(this.pending);
+    this.pending = 0;
     if (this.prop) {
       this.group.updateMatrixWorld(true);
       this.prop.update(this);

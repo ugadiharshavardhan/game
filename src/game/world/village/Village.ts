@@ -20,7 +20,7 @@ import { buildColliders } from './colliders';
 import { PujaSequence } from './PujaSequence';
 import { LockedDoor, TempleAltar, VillagerTalk } from './interactables';
 import { VILLAGE } from './layout';
-import type { VillageVisuals, VisualsContext } from './render/types';
+import type { LiveDetail, VillageVisuals, VisualsContext } from './render/types';
 import { buildLevel } from './solids';
 import { TriggerSystem } from './TriggerSystem';
 
@@ -33,9 +33,10 @@ export async function buildVillage(
   view: VillageView,
   services: WorldServices,
   quality: QualityProfile = PROFILES.high,
+  live: LiveDetail = { particles: 1, lodScale: 1, npcHz: 30 },
 ): Promise<World & { triggers: TriggerSystem; items: PujaItem[] }> {
   const level = buildLevel(VILLAGE);
-  const env = buildEnvironment(scene, renderer, EVENING);
+  const env = buildEnvironment(scene, renderer, { ...EVENING, shadowMapSize: quality.shadowMapSize });
   const colliders = buildColliders(VILLAGE, level, physics);
   const ctx: VisualsContext = {
     scene,
@@ -44,6 +45,7 @@ export async function buildVillage(
     level,
     env,
     quality,
+    live,
     sound: services.playSound,
     onProgress: (p) => EventBus.emit('preload:progress', { progress: 0.2 + 0.5 * p }),
   };

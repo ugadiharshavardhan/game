@@ -44,11 +44,27 @@ New players get a two-minute playable tutorial (from **How to play**): walk, col
 watch the bag fill, find a lit door, go in, watch a moonrise through the window, and come out
 again. Every step ends on something the player did.
 
-Controls: WASD / left stick move · mouse / right stick look · Shift run · Space jump · Ctrl slow walk ·
-C crouch · E (A) interact · I or Tab (Y) the bag · wheel / D-pad zoom · Esc / P pause.
-On touch: a thumb joystick on the left, drag on the right to look, pinch zooms, and large
-COLLECT / SNEAK / bag / pause buttons; keyboard hints are hidden and a portrait phone is asked,
-once and quietly, to turn sideways.
+Controls:
+
+| Action | Keyboard / mouse | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Move | WASD / arrows | left stick | floating joystick, left half |
+| Look | mouse (pointer lock) | right stick (R3 recenters) | drag on the right half |
+| Zoom | wheel | D-pad ↑/↓ | pinch |
+| Run (hold) | Shift | L3 | hold RUN |
+| Slow walk | Ctrl | — | small stick deflection |
+| Jump | Space | X | JUMP |
+| Crouch / sneak | C | B | SNEAK |
+| Interact / enter / puja | E | A | context button |
+| Sit / stand | X | D-pad ← | SIT / STAND |
+| Sleep / wake | Z | D-pad → | SLEEP / WAKE UP |
+| Bag | I or Tab | Y | bag button |
+| Map | M | — | map button |
+| Pause | Esc / P | — | pause button |
+
+On touch, the joystick, the camera drag and the buttons all work at once, because each finger is
+tracked on its own. Buttons fire on touch-down and are at least 48 px. In portrait the game asks
+you to turn the phone sideways. While asleep, only WAKE UP is shown.
 
 ## Playing together
 

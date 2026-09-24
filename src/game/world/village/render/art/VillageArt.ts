@@ -70,7 +70,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     root,
     flames: new FlameField(bank),
     lamps: new LampPool(root, ctx.quality.lamps),
-    culler: new Culler(ctx.quality.detail),
+    culler: new Culler(ctx.quality.detail, ctx.live),
     ground: null,
     shared: { templeGlow: 0, night: 0, moonlight: 0, goingHome: false, dangerous: false, noise: 0, player: new Vector3() },
     tick: [],
@@ -105,13 +105,21 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
     filter: (s) => !covered.some((m) => COVERS[m](s)),
   });
   a.flames.build(root);
-  // Every level of detail in the village, moved in or out by quality in one place.
-  if (ctx.quality.detail !== 1) {
-    root.traverse((o) => {
-      const lod = o as unknown as { isLOD?: boolean; levels?: Array<{ distance: number }> };
-      if (lod.isLOD && lod.levels) for (const level of lod.levels) level.distance *= ctx.quality.detail;
-    });
-  }
+  // Every level of detail in the village, moved in or out by quality in one place — and again
+  // whenever the PerformanceManager changes its mind. The temple's LOD only ever swaps to a
+  // simpler model of the temple; nothing here hides it.
+  const lodLevels: Array<{ level: { distance: number }; base: number }> = [];
+  root.traverse((o) => {
+    const lod = o as unknown as { isLOD?: boolean; levels?: Array<{ distance: number }> };
+    if (lod.isLOD && lod.levels) for (const level of lod.levels) lodLevels.push({ level, base: level.distance * ctx.quality.detail });
+  });
+  let lodScale = NaN;
+  const rescaleLods = () => {
+    if (lodScale === ctx.live.lodScale) return;
+    lodScale = ctx.live.lodScale;
+    for (const l of lodLevels) l.level.distance = l.base * lodScale;
+  };
+  rescaleLods();
   ctx.onProgress?.(1);
 
   const puja = buildCeremony(a);
@@ -143,6 +151,7 @@ export async function buildArt(ctx: VisualsContext): Promise<VillageVisuals> {
       a.lamps.update(dt, camPos, warmth);
       lamplit.emissiveIntensity = 1.6 * warmth;
       interior.emissiveIntensity = 0.6 * (1 + 0.8 * frame.night);
+      rescaleLods();
       a.culler.update(dt, camPos);
       for (const t of a.tick) t(dt, frame.time, camPos);
       fallback.update(dt, frame);

@@ -9,6 +9,7 @@ import {
 } from 'three';
 import type { PlayerConfig } from '../config/playerConfig';
 import { blendWeights, strideRate } from './locomotion';
+import { Posture } from './posture';
 
 /** One-shot full-body animations. Names are the clip names baked into devotee.glb. */
 export const PlayerAction = {
@@ -45,8 +46,35 @@ export const MovementState = {
   Interact: 'interact',
   Pickup: 'pickup',
   Celebrate: 'celebrate',
+  JumpStart: 'jump-start',
+  JumpLoop: 'jump-loop',
+  JumpLand: 'jump-land',
+  Sit: 'sit',
+  Sleep: 'sleep',
+  GetUp: 'get-up',
+  /** On the way down to sitting or lying. */
+  Transition: 'transition',
 } as const;
 export type MovementState = (typeof MovementState)[keyof typeof MovementState];
+
+/** The clip each posture phase plays; null for standing (the locomotion blend has the body). */
+const POSTURE_CLIP: Record<Posture, { clip: string; loop: boolean } | null> = {
+  [Posture.Standing]: null,
+  [Posture.SittingDown]: { clip: 'SitDown', loop: false },
+  [Posture.Sitting]: { clip: 'SitLoop', loop: true },
+  [Posture.StandingUp]: { clip: 'StandUp', loop: false },
+  [Posture.LyingDown]: { clip: 'SleepStart', loop: false },
+  [Posture.Sleeping]: { clip: 'SleepLoop', loop: true },
+  [Posture.Waking]: { clip: 'WakeUp', loop: false },
+};
+
+/** A short full-body clip that takes over from the blend for a moment and gives it back. */
+interface Burst {
+  action: AnimationAction;
+  left: number;
+  duration: number;
+  peak: number;
+}
 
 interface RunningAction {
   action: AnimationAction | null;
@@ -94,6 +122,16 @@ export class CharacterAnimationController {
   private readonly config: PlayerConfig;
   /** Set by the named API; null while the blend follows the controller's real speed. */
   private commanded: { speed: number; crouched: boolean } | null = null;
+  /** Sitting and lying: a layer over everything else, crossfaded clip to clip. */
+  private posture: Posture = Posture.Standing;
+  private postureAction: AnimationAction | null = null;
+  private posturePrev: AnimationAction | null = null;
+  private postureShare = 1;
+  private postureWeight = 0;
+  private readonly jumpStartAction: AnimationAction | null;
+  private readonly jumpLandAction: AnimationAction | null;
+  private jumpStart: Burst | null = null;
+  private jumpLand: Burst | null = null;
 
   constructor(
     model: Object3D,
@@ -128,9 +166,75 @@ export class CharacterAnimationController {
     this.idleLook = this.overlay('IdleLook');
     this.turnStepLeft = this.overlay('TurnLeft');
     this.turnStepRight = this.overlay('TurnRight');
+    this.jumpStartAction = this.overlay('JumpStart');
+    this.jumpLandAction = this.overlay('JumpLand');
     this.nativeLoco = LOCOMOTION.map((n) => native.get(n) ?? 0);
     this.nativeCrouch = CROUCH.map((n) => native.get(n) ?? 0);
     for (const a of Object.values(PlayerAction)) if (!this.clips.has(a)) this.missingClips.push(a);
+    for (const p of Object.values(POSTURE_CLIP)) if (p && !this.clips.has(p.clip)) this.missingClips.push(p.clip);
+  }
+
+  /**
+   * Which posture phase the body should show. Only a change does anything — the clip for the new
+   * phase starts from its first frame and is crossfaded in over the last; standing hands the body
+   * back to the locomotion blend (the get-up clips end on the standing pose, so nothing jumps).
+   */
+  setPosture(phase: Posture): void {
+    if (phase === this.posture) return;
+    this.posture = phase;
+    const spec = POSTURE_CLIP[phase];
+    if (!spec) return;
+    const clip = this.clips.get(spec.clip);
+    if (!clip) return;
+    const action = this.mixer.clipAction(clip);
+    if (this.posturePrev && this.posturePrev !== action) this.posturePrev.setEffectiveWeight(0).stop();
+    this.posturePrev = this.postureAction && this.postureAction !== action ? this.postureAction : null;
+    this.postureShare = this.posturePrev && this.postureWeight > 0.01 ? 0 : 1;
+    action.reset();
+    action.setLoop(spec.loop ? LoopRepeat : LoopOnce, spec.loop ? Infinity : 1);
+    action.clampWhenFinished = !spec.loop;
+    action.setEffectiveTimeScale(1);
+    action.setEffectiveWeight(0);
+    action.play();
+    this.postureAction = action;
+  }
+
+  get postureBlend(): number {
+    return this.postureWeight;
+  }
+
+  /** The feet just left the ground under their own power: the push-off, over the airborne hold. */
+  launched(): void {
+    if (!this.jumpStartAction) return;
+    this.jumpStart = this.burst(this.jumpStartAction, 1);
+  }
+
+  /**
+   * The feet just came down. `impact` is the downward speed (m/s); `moving` softens it, because a
+   * runner landing keeps running rather than stopping to absorb it.
+   */
+  landed(impact: number, moving: boolean): void {
+    if (!this.jumpLandAction || impact < 1.5) return;
+    const peak = Math.min(1, impact / 6) * (moving ? 0.5 : 1);
+    this.jumpLand = this.burst(this.jumpLandAction, peak);
+  }
+
+  private burst(action: AnimationAction, peak: number): Burst {
+    const duration = action.getClip().duration;
+    action.reset();
+    action.setLoop(LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(0);
+    action.play();
+    return { action, left: duration, duration, peak };
+  }
+
+  /** How much of the body a burst has this frame: all of it at once, eased out over its last half. */
+  private burstWeight(b: Burst | null, dt: number): number {
+    if (!b) return 0;
+    b.left -= dt;
+    const t = Math.max(b.left, 0) / Math.max(b.duration, 1e-3);
+    return b.peak * Math.min(1, t * 2);
   }
 
   get isPlayingAction(): boolean {
@@ -223,14 +327,36 @@ export class CharacterAnimationController {
       crouched = this.commanded.crouched;
       airborne = false;
     }
-    this.state = stateFor(c, speed, crouched, this.running);
     const k = 1 - Math.exp(-dt / Math.max(c.blendTime, 1e-3));
     this.crouchWeight += ((crouched ? 1 : 0) - this.crouchWeight) * (1 - Math.exp(-dt / 0.12));
     // Quick off the ground, softer back onto it: a landing should settle, not snap.
     this.airWeight += ((airborne ? 1 : 0) - this.airWeight) * (1 - Math.exp(-dt / (airborne ? 0.07 : 0.12)));
     this.actionWeight += ((this.running ? 1 : 0) - this.actionWeight) * (1 - Math.exp(-dt / c.actionFadeTime));
-    const free = 1 - this.actionWeight;
-    const onFoot = free * (1 - this.airWeight);
+    const seated = this.posture !== Posture.Standing;
+    this.postureWeight += ((seated ? 1 : 0) - this.postureWeight) * (1 - Math.exp(-dt / (seated ? 0.14 : 0.22)));
+    if (!seated && this.postureWeight < 0.002 && this.postureAction) {
+      this.postureAction.setEffectiveWeight(0).stop();
+      this.postureAction = null;
+    }
+    this.postureShare = Math.min(1, this.postureShare + dt / 0.25);
+    this.postureAction?.setEffectiveWeight(this.postureWeight * this.postureShare);
+    if (this.posturePrev) {
+      this.posturePrev.setEffectiveWeight(this.postureWeight * (1 - this.postureShare));
+      if (this.postureShare >= 1) {
+        this.posturePrev.stop();
+        this.posturePrev = null;
+      }
+    }
+    const landing = this.burstWeight(this.jumpLand, dt);
+    const pushing = this.burstWeight(this.jumpStart, dt);
+    if (this.jumpLand && this.jumpLand.left <= 0) this.jumpLand = null;
+    if (this.jumpStart && this.jumpStart.left <= 0) this.jumpStart = null;
+    this.state = stateFor(c, speed, crouched, this.running, this.posture, airborne, pushing > 0.05, landing > 0.05);
+
+    const free = (1 - this.actionWeight) * (1 - this.postureWeight);
+    const onFoot = free * (1 - this.airWeight) * (1 - landing);
+    this.jumpLandAction?.setEffectiveWeight(free * (1 - this.airWeight) * landing);
+    this.jumpStartAction?.setEffectiveWeight(free * this.airWeight * pushing);
 
     const gait = [0, c.slowWalkSpeed, c.walkSpeed, c.fastWalkSpeed, c.runSpeed];
     const crouchGait = [0, c.crouchSpeed];
@@ -238,7 +364,7 @@ export class CharacterAnimationController {
     const crouchBlend = blendWeights(speed, crouchGait);
     this.drive(this.loco, locoBlend, (1 - this.crouchWeight) * onFoot, k);
     this.drive(this.crouch, crouchBlend, this.crouchWeight * onFoot, k);
-    this.drive([this.air], [1], this.airWeight * free, k);
+    this.drive([this.air], [1], this.airWeight * free * (1 - pushing), k);
 
     // The rate comes from the blend that is playing, so the feet match the ground at every speed
     // and not only at the four the clips were made for.
@@ -389,13 +515,39 @@ function syncPhase(actions: (AnimationAction | null)[]): void {
 }
 
 /** Which node of the state machine a speed (and what the character is doing) amounts to. */
-function stateFor(c: PlayerConfig, speed: number, crouched: boolean, action: RunningAction | null): MovementState {
+function stateFor(
+  c: PlayerConfig,
+  speed: number,
+  crouched: boolean,
+  action: RunningAction | null,
+  posture: Posture,
+  airborne: boolean,
+  pushing: boolean,
+  landing: boolean,
+): MovementState {
+  switch (posture) {
+    case Posture.Sitting:
+      return MovementState.Sit;
+    case Posture.Sleeping:
+      return MovementState.Sleep;
+    case Posture.StandingUp:
+    case Posture.Waking:
+      return MovementState.GetUp;
+    case Posture.SittingDown:
+    case Posture.LyingDown:
+      return MovementState.Transition;
+    default:
+      break;
+  }
   if (action) {
     const name = action.action?.getClip().name;
     if (name === PlayerAction.Pickup) return MovementState.Pickup;
     if (name === PlayerAction.Celebrate) return MovementState.Celebrate;
     return MovementState.Interact;
   }
+  if (pushing) return MovementState.JumpStart;
+  if (airborne) return MovementState.JumpLoop;
+  if (landing) return MovementState.JumpLand;
   if (crouched) return MovementState.Sneak;
   if (speed <= c.idleThreshold) return MovementState.Idle;
   if (speed > (c.fastWalkSpeed + c.runSpeed) / 2) return MovementState.Run;

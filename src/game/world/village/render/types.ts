@@ -16,9 +16,21 @@ export interface VisualsContext {
   env: Environment;
   /** How much this device can be asked for: LOD distances, lights, particles. */
   quality: QualityProfile;
+  /** The part of it that changes mid-run (PerformanceManager): read every frame, never cached. */
+  live: LiveDetail;
   /** The world's own sounds (a dog barking down the lane). */
   sound?: (key: SoundKey, volume?: number) => void;
   onProgress?: (p: number) => void;
+}
+
+/** Detail the PerformanceManager adjusts live. Only ever what is far away or decorative. */
+export interface LiveDetail {
+  /** Fraction of the ambient particle buffers drawn. */
+  particles: number;
+  /** Multiplier on the profile's LOD and culling distances. Never culls the temple or anything played with. */
+  lodScale: number;
+  /** Animation rate for villagers and teammates beyond conversation distance. */
+  npcHz: number;
 }
 
 export interface FrameInfo {

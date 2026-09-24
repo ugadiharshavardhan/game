@@ -1,23 +1,32 @@
 import { useState } from 'react';
+import type { PerfReport } from '../../shared/events';
 import { useGameEvent } from '../hooks/useGameEvent';
 
 /**
- * What this device is managing, in the corner — opened with `?perf=1` on any build, including the
- * one the contest is judged on.
+ * What this device is managing, and what the PerformanceManager has done about it, in the corner —
+ * opened with `?perf=1` on any build, including the one the contest is judged on.
  *
  * It exists because the numbers that matter are the ones from a real phone on a real network, and
  * that is a test nobody can run from a desktop. Off unless asked for: the engine does not even
- * count frames without the flag.
+ * report without the flag. Updated twice a second, so it never re-renders React per frame.
  */
 export function PerfOverlay() {
-  const [perf, setPerf] = useState<{ fps: number; calls: number; triangles: number; quality: string; memoryMb: number | null } | null>(null);
+  const [perf, setPerf] = useState<PerfReport | null>(null);
   useGameEvent('ui:perf', setPerf);
   if (!perf) return null;
   const rows: Array<[string, string]> = [
-    ['fps', `${perf.fps}`],
+    ['fps', `${perf.fps} (worst ${perf.worstMs} ms)`],
+    ['quality', `${perf.quality.toUpperCase()} · ${perf.requested === 'auto' ? 'auto' : 'manual'}`],
+    ['step', `${perf.step + 1}/${perf.steps}`],
+    ['pixels', `×${perf.pixelRatio.toFixed(2)}`],
+    ['shadow', `${perf.shadowMapSize}${perf.shadowEvery > 1 ? ` · 1/${perf.shadowEvery}` : ''}`],
+    ['bloom', perf.bloom ? 'on' : 'off'],
+    ['particles', `${Math.round(perf.particles * 100)}%`],
+    ['lod', `×${perf.lodScale.toFixed(2)}`],
+    ['far npc', `${perf.npcHz} Hz`],
+    ['lights', `${perf.lights}`],
     ['draws', `${perf.calls}`],
     ['tris', `${(perf.triangles / 1000).toFixed(0)}k`],
-    ['quality', perf.quality],
     ...(perf.memoryMb !== null ? ([['heap', `${perf.memoryMb} MB`]] as Array<[string, string]>) : []),
   ];
   return (
@@ -28,6 +37,7 @@ export function PerfOverlay() {
           <span className="tabular-nums">{v}</span>
         </div>
       ))}
+      <div className="mt-0.5 max-w-40 truncate text-dusk-400/80">{perf.device}</div>
     </div>
   );
 }

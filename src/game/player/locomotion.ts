@@ -29,7 +29,8 @@ export function targetSpeed(c: PlayerConfig, intent: MoveIntent): number {
   const m = Math.min(Math.max(intent.magnitude, 0), 1);
   if (m < 0.01) return 0;
   if (intent.crouched) return c.crouchSpeed * m;
-  if (intent.run) return c.runSpeed * m;
+  // Held RUN with a thumb: a run as soon as the stick is past a stroll, not only at its very edge.
+  if (intent.run) return c.runSpeed * (intent.analogue ? Math.min(1, m / STICK_WALK) : m);
   if (intent.slow) return c.slowWalkSpeed * m;
   if (!intent.analogue) return c.walkSpeed * m;
   // A stick: stroll → walk → fast walk, with no step in it anywhere.

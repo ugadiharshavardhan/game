@@ -31,7 +31,41 @@ export interface Pose {
   hips?: { x?: number; y?: number; z?: number };
   /** Solve hip height so the lower foot touches the ground (gaits, crouch). Default true. */
   plant?: boolean;
+  /**
+   * Turns of the Hips bone applied *after* every limb is posed, degrees about the character's axes,
+   * so the whole posed skeleton pivots about the pelvis. This is how a body gets from upright to
+   * lying: the limbs keep the meaning they have standing, and the root carries them over.
+   */
+  root?: { x?: number; z?: number };
+  /**
+   * Rest the body on the floor: hip height is solved so the lowest part of the body — a foot, a
+   * knee, the seat, the back of the head — just touches the ground (see CLEARANCE). Wins over
+   * `plant`, and agrees with it for any pose standing on its feet.
+   */
+  ground?: boolean;
 }
+
+/**
+ * How far each joint sits inside the surface of the body, metres: lying on the back, the spine's
+ * joints are a back's thickness off the floor, not on it. Feet and toes use their own rest height.
+ */
+const CLEARANCE: Record<string, number> = {
+  Hips: 0.1,
+  Spine: 0.1,
+  Spine1: 0.1,
+  Spine2: 0.1,
+  Neck: 0.08,
+  Head: 0.09,
+  LeftShoulder: 0.08,
+  RightShoulder: 0.08,
+  LeftArm: 0.06,
+  RightArm: 0.06,
+  LeftUpLeg: 0.09,
+  RightUpLeg: 0.09,
+  LeftLeg: 0.05,
+  RightLeg: 0.05,
+};
+const CLEARANCE_DEFAULT = 0.035;
 
 /** Every bone any pose may turn, parents before children — the order turns are applied in. */
 const ORDER = [
@@ -61,6 +95,8 @@ export class Rig {
   private readonly rest = new Map<string, Quaternion>();
   private readonly restHips: Vector3;
   private readonly restAnkle: number;
+  /** Each bone's clearance above the floor for `ground` poses. */
+  private readonly clearance = new Map<string, number>();
   private readonly model: Object3D;
   private readonly modelQ = new Quaternion();
   private readonly tmpQ = new Quaternion();
@@ -79,6 +115,25 @@ export class Rig {
     this.restHips = hips ? hips.position.clone() : new Vector3();
     model.updateMatrixWorld(true);
     this.restAnkle = Math.min(this.ankleY('Left'), this.ankleY('Right'));
+    // Standing at rest, the feet are on the floor by definition: whatever height a foot or toe
+    // joint has then is its clearance, so a standing pose solves the same under either rule.
+    for (const name of this.bones.keys()) {
+      const foot = /Foot$|ToeBase$/.test(name);
+      this.clearance.set(name, foot ? Math.min(this.jointY(name), CLEARANCE_DEFAULT * 3) : (CLEARANCE[name] ?? CLEARANCE_DEFAULT));
+    }
+  }
+
+  /** A joint's height in the character's frame. */
+  jointY(name: string): number {
+    const b = this.bones.get(name);
+    return b ? this.model.worldToLocal(b.getWorldPosition(this.tmpV)).y : 0;
+  }
+
+  /** How far the pose must drop (negative: rise) for its lowest part to rest on the floor. */
+  private groundDrop(): number {
+    let drop = Infinity;
+    for (const name of this.bones.keys()) drop = Math.min(drop, this.jointY(name) - (this.clearance.get(name) ?? CLEARANCE_DEFAULT));
+    return Number.isFinite(drop) ? drop : 0;
   }
 
   get ok(): boolean {
@@ -113,9 +168,23 @@ export class Rig {
         bone.updateMatrixWorld(true);
       }
     }
-    // Hips: plant the lower foot, then add the pose's own offset.
+    const hips = this.bones.get('Hips');
+    if (hips?.parent && p.root) {
+      for (const axis of ['x', 'z'] as const) {
+        const deg = p.root[axis];
+        if (!deg) continue;
+        const pq = this.tmpQ.copy(this.modelQ).multiply(hips.parent.getWorldQuaternion(new Quaternion()));
+        const delta = new Quaternion().setFromAxisAngle(AXES[axis], deg * DEG);
+        hips.quaternion.premultiply(pq.clone().invert().multiply(delta).multiply(pq));
+        hips.updateMatrixWorld(true);
+      }
+    }
+    // Hips: plant the lower foot (or rest the body on the floor), then add the pose's own offset.
     const off = new Vector3(p.hips?.x ?? 0, p.hips?.y ?? 0, p.hips?.z ?? 0);
-    if (p.plant !== false) {
+    if (p.ground) {
+      this.model.updateMatrixWorld(true);
+      off.y -= this.groundDrop();
+    } else if (p.plant !== false) {
       this.model.updateMatrixWorld(true);
       off.y += this.restAnkle - Math.min(this.ankleY('Left'), this.ankleY('Right'));
     }
@@ -228,9 +297,16 @@ export interface Gait {
   /** Where in the cycle the swing knee peaks. */
   swingAt: number;
   armSwing: number;
+  /**
+   * Shoulder offset the swing is centred on, degrees (+ = back). A runner's arm drives further
+   * back than it comes forward; centred on vertical, a bent arm never gets behind the body.
+   */
+  armBias?: number;
   elbow: number;
   /** Extra elbow bend on the forward swing. */
   elbowPump: number;
+  /** Elbow opening on the back swing (the hand passes the hip). */
+  elbowOpen?: number;
   lean: number;
   pelvisYaw: number;
   sway: number;
@@ -246,7 +322,9 @@ export const GAITS = {
   // Somewhere to be, but not running: a longer stride, a quicker arm, a little more lean, and a
   // shorter time with both feet down.
   fast: { thighFwd: 38, thighBack: 23, kneeLoad: 18, kneeSwing: 74, swingAt: 0.71, armSwing: 25, elbow: -30, elbowPump: 14, lean: 7, pelvisYaw: 7, sway: 0.022, flight: 0, stance: 0.52 },
-  run: { thighFwd: 52, thighBack: 24, kneeLoad: 32, kneeSwing: 105, swingAt: 0.68, armSwing: 26, elbow: -72, elbowPump: 8, lean: 11, pelvisYaw: 9, sway: 0.015, flight: 0.05, stance: 0.38 },
+  // Elbows near a right angle, driving back past the hip and forward to the chest, opposite the
+  // legs; the foot lands under the body rather than reaching, so the hips do not pitch up and down.
+  run: { thighFwd: 34, thighBack: 34, kneeLoad: 26, kneeSwing: 105, swingAt: 0.68, armSwing: 36, armBias: 22, elbow: -50, elbowPump: 10, elbowOpen: 14, lean: 12, pelvisYaw: 9, sway: 0.015, flight: 0.05, stance: 0.38 },
   crouch: { thighFwd: 34, thighBack: 8, kneeLoad: 0, kneeSwing: 40, swingAt: 0.74, armSwing: 8, elbow: -40, elbowPump: 4, lean: 0, pelvisYaw: 4, sway: 0.02, flight: 0, stance: 0.62 },
 } satisfies Record<string, Gait>;
 
@@ -273,7 +351,9 @@ export function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
   const s = Math.sin(TAU * phase);
   const crouchLegs = { thigh: -62 * crouch, knee: 95 * crouch };
   const arm = g.armSwing * c;
-  const pump = (v: number) => g.elbow - g.elbowPump * Math.max(0, -v / Math.max(g.armSwing, 1));
+  const bias = g.armBias ?? 0;
+  const swing = Math.max(g.armSwing, 1);
+  const pump = (v: number) => g.elbow - g.elbowPump * Math.max(0, -v / swing) + (g.elbowOpen ?? 0) * Math.max(0, v / swing);
   return {
     turns: [
       ['Hips', 'y', -g.pelvisYaw * c],
@@ -283,8 +363,8 @@ export function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
       ['Head', 'x', -g.lean * 0.6 - 18 * crouch],
       ['Head', 'y', -g.pelvisYaw * 0.3 * c],
       ...armsDown(-4 * crouch, 0),
-      ['LeftArm', 'x', arm - 20 * crouch],
-      ['RightArm', 'x', -arm - 20 * crouch],
+      ['LeftArm', 'x', arm + bias - 20 * crouch],
+      ['RightArm', 'x', -arm + bias - 20 * crouch],
       ['LeftForeArm', 'x', pump(arm)],
       ['RightForeArm', 'x', pump(-arm)],
       ...leg('Left', phase, g, crouchLegs),
@@ -340,10 +420,13 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
     return [bn, ax as Axis, d];
   });
   const h = (p: Pose, c: 'x' | 'y' | 'z') => p.hips?.[c] ?? 0;
+  const r = (p: Pose, c: 'x' | 'z') => p.root?.[c] ?? 0;
   return {
     turns,
     hips: { x: h(a, 'x') * (1 - k) + h(b, 'x') * k, y: h(a, 'y') * (1 - k) + h(b, 'y') * k, z: h(a, 'z') * (1 - k) + h(b, 'z') * k },
     plant: a.plant !== false || b.plant !== false,
+    ...(a.root || b.root ? { root: { x: r(a, 'x') * (1 - k) + r(b, 'x') * k, z: r(a, 'z') * (1 - k) + r(b, 'z') * k } } : {}),
+    ...(a.ground || b.ground ? { ground: true } : {}),
   };
 }
 
@@ -585,6 +668,190 @@ const PRANAM: Pose = {
   hips: { z: -0.2 },
 };
 
+/** Lengths of the one-shot posture and jump clips, seconds — the posture machine's timings. */
+export const POSTURE_SECONDS = {
+  SitDown: 1.2,
+  StandUp: 1.2,
+  SleepStart: 3.0,
+  WakeUp: 2.6,
+  JumpStart: 0.22,
+  JumpLand: 0.4,
+} as const;
+
+// ---- sitting and lying on the ground ------------------------------------------------------------
+//
+// Every one of these rests on the floor (`ground`): the hips go wherever the folded legs, the seat
+// or the back put them. Lying down is the root carrying the posed body over (`root.x` < 0 tips it
+// onto its back), so the arms and legs are written as they would be standing, and the transition
+// clips simply blend from one to the next.
+
+/** Down on the haunches, leaning forward over the feet: the way down to the floor, and back up. */
+const SQUAT: Pose = {
+  turns: [
+    ['Spine', 'x', 30],
+    ['Spine1', 'x', 8],
+    ['Head', 'x', -14],
+    ...armsDown(0, -30),
+    ['LeftArm', 'x', -38],
+    ['RightArm', 'x', -38],
+    ['LeftUpLeg', 'x', -96],
+    ['RightUpLeg', 'x', -96],
+    ['LeftUpLeg', 'z', 10],
+    ['RightUpLeg', 'z', -10],
+    ['LeftLeg', 'x', 128],
+    ['RightLeg', 'x', 128],
+    ['LeftFoot', 'x', -32],
+    ['RightFoot', 'x', -32],
+  ],
+  hips: { z: -0.08 },
+  ground: true,
+};
+
+/** Sitting on the ground, knees up, forearms resting on them. */
+const SEATED: Pose = {
+  turns: [
+    ['Spine', 'x', 10],
+    ['Spine1', 'x', 6],
+    ['Head', 'x', 2],
+    ...armsDown(-6, 0),
+    ['LeftArm', 'x', -58],
+    ['RightArm', 'x', -58],
+    ['LeftForeArm', 'x', -30],
+    ['RightForeArm', 'x', -30],
+    ['LeftUpLeg', 'x', -118],
+    ['RightUpLeg', 'x', -118],
+    ['LeftUpLeg', 'z', 12],
+    ['RightUpLeg', 'z', -12],
+    ['LeftLeg', 'x', 78],
+    ['RightLeg', 'x', 78],
+    ['LeftFoot', 'x', 44],
+    ['RightFoot', 'x', 44],
+  ],
+  hips: { z: -0.12 },
+  ground: true,
+};
+
+/** Leaning back on the hands, legs out along the ground: halfway to lying down. */
+const RECLINE: Pose = {
+  turns: [
+    ['Spine', 'x', 14],
+    ['Spine1', 'x', 6],
+    ['Head', 'x', 12],
+    ...armsDown(-10, -8),
+    ['LeftArm', 'x', 42],
+    ['RightArm', 'x', 42],
+    ['LeftUpLeg', 'x', -58],
+    ['RightUpLeg', 'x', -58],
+    ['LeftLeg', 'x', 22],
+    ['RightLeg', 'x', 14],
+    ['LeftFoot', 'x', 8],
+    ['RightFoot', 'x', 8],
+  ],
+  root: { x: -32 },
+  ground: true,
+};
+
+/** Down on the elbows, most of the way back. */
+const PROPPED: Pose = {
+  turns: [
+    ['Spine', 'x', 16],
+    ['Spine1', 'x', 8],
+    ['Head', 'x', 22],
+    ...armsDown(-14, 0),
+    ['LeftArm', 'x', 30],
+    ['RightArm', 'x', 30],
+    ['LeftForeArm', 'x', -84],
+    ['RightForeArm', 'x', -84],
+    ['LeftUpLeg', 'x', -26],
+    ['RightUpLeg', 'x', -22],
+    ['LeftLeg', 'x', 16],
+    ['RightLeg', 'x', 8],
+    ['LeftFoot', 'x', 10],
+    ['RightFoot', 'x', 10],
+  ],
+  root: { x: -64 },
+  ground: true,
+};
+
+/**
+ * Asleep on the back: one knee drawn up, a hand on the stomach and the other by the side, the head
+ * fallen a little to one side. `breath` (−1…1) lifts the chest.
+ */
+function lying(breath: number, drift: number): Pose {
+  return {
+    turns: [
+      ['Spine', 'x', 2],
+      ['Spine1', 'x', -5],
+      ['Spine2', 'x', -9 + 1.4 * breath],
+      ['Neck', 'x', -14],
+      ['Head', 'x', -10],
+      ['Head', 'y', 26 + 3 * drift],
+      ...armsDown(-4, -14),
+      // The right hand rests on the stomach: the elbow out, the forearm folded across the body.
+      ['RightArm', 'x', -18],
+      ['RightArm', 'z', -6],
+      ['RightForeArm', 'x', -70],
+      ['RightForeArm', 'y', 55],
+      ['LeftArm', 'x', 34],
+      ['LeftUpLeg', 'x', -20 + 2 * drift],
+      ['LeftLeg', 'x', 38],
+      ['LeftFoot', 'x', -12],
+      ['LeftUpLeg', 'z', 6],
+      ['RightUpLeg', 'x', -2],
+      ['RightUpLeg', 'z', -5],
+      ['RightLeg', 'x', 6],
+      ['RightFoot', 'x', 22],
+    ],
+    root: { x: -88, z: 6 },
+    ground: true,
+  };
+}
+const LIE: Pose = lying(0, 0);
+
+/** Sitting still: breathing, and looking about now and then. */
+function seatedIdle(t: number): Pose {
+  const breath = Math.sin((TAU * t) / 4);
+  const look = Math.sin((TAU * t) / 8);
+  return { ...SEATED, turns: [...SEATED.turns, ['Spine2', 'x', 1.2 * breath], ['Head', 'y', 18 * look], ['Head', 'x', 2 * Math.sin((TAU * t) / 4 + 1)]] };
+}
+
+/** Pushing off: legs straightening under the body, arms swung up. */
+const TAKEOFF: Pose = {
+  turns: [
+    ['Spine', 'x', 10],
+    ['Head', 'x', -8],
+    ...armsDown(-10, -24),
+    ['LeftArm', 'x', -46],
+    ['RightArm', 'x', -40],
+    ['LeftUpLeg', 'x', -24],
+    ['LeftLeg', 'x', 30],
+    ['RightUpLeg', 'x', 8],
+    ['RightLeg', 'x', 12],
+    ['LeftFoot', 'x', 10],
+    ['RightFoot', 'x', 30],
+  ],
+  plant: false,
+};
+
+/** Touching down: knees giving, weight low, arms out to catch the balance. */
+const LAND: Pose = {
+  turns: [
+    ['Spine', 'x', 20],
+    ['Spine1', 'x', 4],
+    ['Head', 'x', -12],
+    ...armsDown(-16, -30),
+    ['LeftArm', 'x', -24],
+    ['RightArm', 'x', -20],
+    ['LeftUpLeg', 'x', -52],
+    ['RightUpLeg', 'x', -44],
+    ['LeftLeg', 'x', 84],
+    ['RightLeg', 'x', 74],
+    ['LeftFoot', 'x', -32],
+    ['RightFoot', 'x', -30],
+  ],
+  hips: { z: -0.05 },
+};
+
 /**
  * Off the ground: the trailing leg tucked, the leading one reaching, arms out for balance.
  *
@@ -709,6 +976,22 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
   // Held while the feet are off the ground, and looped: the blend weight, not the clip, says how
   // long a jump lasts, so one pose covers a hop off a step and a drop from the temple plinth.
   clips.push(rig.clip('Jump', 0.9, fps, keyed([[0, AIRBORNE], [0.45, AIRBORNE_B], [0.9, AIRBORNE]])));
+  // The two ends of a jump, played over the airborne hold: the push away and the knees taking the landing.
+  const d = POSTURE_SECONDS;
+  clips.push(rig.clip('JumpStart', d.JumpStart, fps, keyed([[0, TAKEOFF], [d.JumpStart, AIRBORNE]])));
+  clips.push(rig.clip('JumpLand', d.JumpLand, fps, keyed([[0, LAND], [0.12, LAND], [d.JumpLand, STAND]])));
+  // Down to the ground and back up; lying down to sleep and waking. Each ends exactly where the
+  // next begins (a loop, or standing), so the posture layer can hand from one to the next.
+  clips.push(rig.clip('SitDown', d.SitDown, fps, keyed([[0, STAND], [0.6, SQUAT], [d.SitDown, SEATED]])));
+  clips.push(rig.clip('SitLoop', 8, 15, seatedIdle));
+  clips.push(rig.clip('StandUp', d.StandUp, fps, keyed([[0, SEATED], [0.6, SQUAT], [d.StandUp, STAND]])));
+  clips.push(
+    rig.clip('SleepStart', d.SleepStart, fps, keyed([[0, STAND], [0.7, SQUAT], [1.3, SEATED], [1.9, RECLINE], [2.4, PROPPED], [d.SleepStart, LIE]])),
+  );
+  clips.push(rig.clip('SleepLoop', 4.5, 15, (t) => lying(Math.sin((TAU * t) / 4.5), Math.sin((TAU * t) / 4.5 + 1.3))));
+  clips.push(
+    rig.clip('WakeUp', d.WakeUp, fps, keyed([[0, LIE], [0.5, PROPPED], [0.9, RECLINE], [1.4, SEATED], [2.0, SQUAT], [d.WakeUp, STAND]])),
+  );
   rig.reset();
   model.updateMatrixWorld(true);
   return clips;
