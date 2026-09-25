@@ -158,4 +158,33 @@ describe('posture clips on devotee.glb', () => {
     at('Run', bestT);
     expect(pos('LeftHand').z - pos('LeftArm').z).toBeLessThan(0);
   });
+
+  it('worships with palms touching directly above or at the head without crossing', () => {
+    at('Celebrate', 1.2);
+    const head = pos('Head');
+    const lh = pos('LeftHand');
+    const rh = pos('RightHand');
+    // Hands are raised to the head level
+    expect(lh.y).toBeGreaterThan(head.y - 0.05);
+    expect(rh.y).toBeGreaterThan(head.y - 0.05);
+    // Hands are touching directly together (distance between hand centers is small)
+    expect(lh.distanceTo(rh)).toBeLessThan(0.06);
+    // Hands must NOT cross: left hand stays on the left (x >= rh.x - 0.002)
+    expect(lh.x).toBeGreaterThanOrEqual(rh.x - 0.002);
+  });
+
+  it('animates picking up and putting into bag', () => {
+    // At pickup reach (0.6s), hand is reaching down
+    at('Pickup', 0.6);
+    const reachY = pos('RightHand').y;
+    expect(reachY).toBeLessThan(pos('Hips').y + 0.1);
+
+    // At bag tuck (1.25s), right hand brings item across to bag at left side
+    at('Pickup', 1.25);
+    const bagHand = pos('RightHand');
+    expect(bagHand.y).toBeGreaterThan(reachY + 0.05);
+    // Right hand has moved inward towards body and bag
+    expect(bagHand.x).toBeGreaterThan(-0.45);
+  });
 });
+

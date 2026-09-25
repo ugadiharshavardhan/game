@@ -12,6 +12,7 @@ export function TeamHUD({ snapshot }: TeamHUDProps) {
   const { teams, sync, profiles } = services();
   const team = useObservable(teams.snapshot);
   const profile = useObservable(profiles.profile);
+  const onlineUsers = useObservable(teams.channel.online);
   const [peers, setPeers] = useState<RemotePeer[]>([]);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -80,11 +81,15 @@ export function TeamHUD({ snapshot }: TeamHUDProps) {
             </p>
           </div>
         ) : (
-          /* Full player list with usernames, collected items, and offering completion percentage */
+          /* Full player list with usernames, collected items, offering completion percentage, and online/offline status */
           <ul className="mt-2.5 space-y-2.5">
             {members.map((member) => {
               const isLocal = member.userId === profile?.id;
               const peer = isLocal ? null : peers.find((p) => p.playerId === member.userId);
+
+              // Live online vs offline status
+              const isOnline = isLocal || onlineUsers.has(member.userId) || (peer !== undefined && peer !== null && peer.presence > 0.05);
+              const isPlaying = isLocal || (isOnline && peer !== undefined && peer !== null && peer.presence > 0.05);
 
               // Gather player stats
               const displayName = isLocal
@@ -102,13 +107,15 @@ export function TeamHUD({ snapshot }: TeamHUDProps) {
                 ? isComplete
                   ? '🙏 Complete'
                   : 'Active'
-                : peer?.indoors
-                  ? '🏠 In Shelter'
-                  : isComplete
-                    ? '🙏 Complete'
-                    : peer
-                      ? '🌿 In Village'
-                      : 'Connecting...';
+                : !isOnline
+                  ? 'Went Offline'
+                  : peer?.indoors
+                    ? '🏠 In Shelter'
+                    : isComplete
+                      ? '🙏 Complete'
+                      : peer
+                        ? '🌿 In Village'
+                        : 'Connecting...';
 
               return (
                 <li
@@ -116,10 +123,14 @@ export function TeamHUD({ snapshot }: TeamHUDProps) {
                   className={`rounded-xl border p-2 text-xs transition ${
                     isLocal
                       ? 'border-lamp-400/50 bg-lamp-400/10 shadow-sm shadow-lamp-400/10'
-                      : 'border-night-800 bg-night-900/60'
+                      : !isOnline
+                        ? 'border-rose-900/40 bg-night-950/80 opacity-75'
+                        : isPlaying
+                          ? 'border-emerald-500/30 bg-night-900/80'
+                          : 'border-night-800 bg-night-900/60'
                   }`}
                 >
-                  {/* Top row: username & completion percentage */}
+                  {/* Top row: username, online status indicator & completion percentage */}
                   <div className="flex items-center justify-between gap-1">
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-semibold text-lamp-200">
@@ -133,6 +144,29 @@ export function TeamHUD({ snapshot }: TeamHUDProps) {
                       {isHost && !isLocal && (
                         <span className="text-[10px]" title="Team Host">
                           👑
+                        </span>
+                      )}
+
+                      {/* Online / Playing status indicator badge */}
+                      {isLocal ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px] font-semibold text-emerald-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Playing
+                        </span>
+                      ) : isPlaying ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px] font-semibold text-emerald-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Playing
+                        </span>
+                      ) : isOnline ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[8px] font-semibold text-amber-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          Online
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[8px] font-bold text-rose-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                          Went Offline
                         </span>
                       )}
                     </div>

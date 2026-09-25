@@ -511,6 +511,7 @@ const REACH_DOWN: Pose = {
     ['RightArm', 'x', -52],
     ['RightArm', 'z', -14],
     ['RightForeArm', 'x', -12],
+    ['RightHand', 'x', 15],
     ['LeftArm', 'x', -14],
     ['LeftForeArm', 'x', -30],
     ['LeftUpLeg', 'x', -68],
@@ -523,14 +524,56 @@ const REACH_DOWN: Pose = {
   hips: { z: -0.1 },
 };
 
-/** Holding it close afterwards. */
-const HOLD: Pose = {
-  turns: [['Spine', 'x', 3], ['Head', 'x', 6], ...armsDown(0, -14), ['RightArm', 'x', -28], ['RightArm', 'z', -18], ['RightForeArm', 'x', -70], ['LeftArm', 'x', -10], ['LeftForeArm', 'x', -30]],
+/** Placing an item into the sling bag (jhola) hanging on the left hip. */
+const PUT_IN_BAG: Pose = {
+  turns: [
+    ['Spine', 'x', 8],
+    ['Spine1', 'y', -6],
+    ['Head', 'x', 16],
+    ['Head', 'y', 14],
+    ...armsDown(0, -12),
+    // Left hand steadies the bag mouth at the left hip
+    ['LeftArm', 'x', -10],
+    ['LeftArm', 'z', -10],
+    ['LeftForeArm', 'x', -48],
+    ['LeftForeArm', 'y', -18],
+    // Right arm moves across body to deposit the item into the left hip bag
+    ['RightArm', 'x', -24],
+    ['RightArm', 'y', -34],
+    ['RightArm', 'z', -24],
+    ['RightForeArm', 'x', -76],
+    ['RightForeArm', 'y', 36],
+    ['RightHand', 'x', -18],
+    ['RightHand', 'y', -12],
+  ],
+};
+
+/** Tucking the item securely inside the bag. */
+const PUT_IN_BAG_TUCK: Pose = {
+  turns: [
+    ['Spine', 'x', 10],
+    ['Spine1', 'y', -8],
+    ['Head', 'x', 18],
+    ['Head', 'y', 16],
+    ...armsDown(0, -12),
+    ['LeftArm', 'x', -10],
+    ['LeftArm', 'z', -10],
+    ['LeftForeArm', 'x', -52],
+    ['LeftForeArm', 'y', -20],
+    // Right hand dips down into the opening of the bag
+    ['RightArm', 'x', -18],
+    ['RightArm', 'y', -38],
+    ['RightArm', 'z', -28],
+    ['RightForeArm', 'x', -84],
+    ['RightForeArm', 'y', 40],
+    ['RightHand', 'x', -24],
+    ['RightHand', 'y', -16],
+  ],
 };
 
 /** Reaching out, right hand at chest height (a counter, a latch). */
 const REACH_OUT: Pose = {
-  turns: [['Spine', 'x', 10], ['Spine1', 'y', -8], ['Head', 'x', 6], ...armsDown(0, -12), ['RightArm', 'x', -72], ['RightArm', 'z', -16], ['RightForeArm', 'x', -18], ['LeftForeArm', 'x', -22]],
+  turns: [['Spine', 'x', 10], ['Spine1', 'y', -8], ['Head', 'x', 6], ...armsDown(0, -12), ['RightArm', 'x', -72], ['RightArm', 'z', -16], ['RightForeArm', 'x', -18], ['RightHand', 'x', 12], ['LeftForeArm', 'x', -22]],
 };
 
 /** A push on a door: the arm out, palm first. */
@@ -560,7 +603,7 @@ const namasteTurns = (p: readonly number[]): Turn[] => [
   ['RightForeArm', 'y', -p[4]],
 ];
 
-/** The turns of an overhead worship pose: arms raised, elbows bent outward, palms joined above head. */
+/** The turns of an overhead worship pose: arms raised, elbows bent outward, palms joined flush together above head. */
 const overheadTurns = (p: readonly number[]): Turn[] => [
   ['LeftArm', 'z', p[0]],
   ['RightArm', 'z', -p[0]],
@@ -576,19 +619,18 @@ const overheadTurns = (p: readonly number[]): Turn[] => [
   ['RightForeArm', 'z', -(p[5] ?? 0)],
   ['LeftHand', 'x', p[6] ?? 0],
   ['RightHand', 'x', p[6] ?? 0],
-  ['LeftHand', 'z', p[7] ?? 0],
-  ['RightHand', 'z', -(p[7] ?? 0)],
+  ['LeftHand', 'y', p[7] ?? -82],
+  ['RightHand', 'y', -(p[7] ?? -82)],
+  ['LeftHand', 'z', p[8] ?? 0],
+  ['RightHand', 'z', -(p[8] ?? 0)],
 ];
 
 /**
  * A namaste whose palms actually meet, for THIS skeleton.
  *
- * The fixed NAMASTE below was written for one set of proportions and, on the character as built,
- * left the hands 0.8 m apart with the arms spread. Arm length and shoulder width differ from
- * person to person, and a pose made of angles cannot be right for all of them — so the angles are
- * searched for, once, when the clips are built: the five numbers that put both palms together, at
- * the chest, a hand's breadth in front of it. It takes a few hundred trial poses and a few
- * milliseconds.
+ * Arm length and shoulder width differ from person to person, and a pose made of angles cannot be
+ * right for all of them — so the angles are searched for, once, when the clips are built: the numbers
+ * that put both palms together, touching directly without crossing.
  */
 export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pose; worship: Pose } {
   const head = rig.bones.get('Head');
@@ -608,7 +650,18 @@ export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pos
       model.updateMatrixWorld(true);
       const a = inFrame(l);
       const b = inFrame(r);
-      return Math.hypot(a.x - 0.02, a.y - target.y, a.z - target.z) + Math.hypot(b.x + 0.02, b.y - target.y, b.z - target.z) + a.distanceTo(b) * 2;
+      // In character local frame, +X is left, -X is right.
+      // Left hand must remain on the left side (a.x >= 0.012) and Right hand on right (b.x <= -0.012).
+      // Hands MUST NEVER cross over each other (a.x < b.x is crossing).
+      const crossPenalty =
+        (a.x < b.x ? 60 + (b.x - a.x) * 120 : 0) +
+        (a.x < 0.012 ? (0.012 - a.x) * 50 : 0) +
+        (b.x > -0.012 ? (b.x + 0.012) * 50 : 0);
+      const gapDiff = Math.abs((a.x - b.x) - 0.025);
+      const yDiff = Math.abs(a.y - b.y);
+      const zDiff = Math.abs(a.z - b.z);
+      const centerDist = Math.hypot((a.x + b.x) / 2, (a.y + b.y) / 2 - target.y, (a.z + b.z) / 2 - target.z);
+      return centerDist * 2 + yDiff * 4 + zDiff * 4 + gapDiff * 3 + crossPenalty;
     };
     let p = start;
     let best = cost(p);
@@ -651,8 +704,8 @@ export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pos
   rig.apply({ turns: worshipLean });
   model.updateMatrixWorld(true);
   const bentHead = inFrame(head);
-  const overheadTarget = new Vector3(0, bentHead.y + 0.15, bentHead.z + 0.05);
-  const overheadP = solve(worshipLean, overheadTarget, [-115, -120, 30, -60, -24, 30, 0, 0], overheadTurns);
+  const overheadTarget = new Vector3(0, bentHead.y + 0.22, bentHead.z + 0.04);
+  const overheadP = solve(worshipLean, overheadTarget, [-125, -98, 30, -82, 0, 15, 0, -82, 0], overheadTurns);
   const worship: Pose = { turns: [...overheadTurns(overheadP), ...worshipLean] };
 
   rig.reset();
@@ -1013,8 +1066,36 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
   // rotation is the controller's business; this is only what the body does while it happens.
   clips.push(rig.clip('TurnLeft', 0.7, fps, keyed([[0, STAND], [0.25, PIVOT_LEFT], [0.5, PIVOT_LEFT], [0.7, STAND]])));
   clips.push(rig.clip('TurnRight', 0.7, fps, keyed([[0, STAND], [0.25, PIVOT_RIGHT], [0.5, PIVOT_RIGHT], [0.7, STAND]])));
-  clips.push(rig.clip('Pickup', 1.4, fps, keyed([[0, STAND], [0.55, REACH_DOWN], [0.8, REACH_DOWN], [1.15, HOLD], [1.4, STAND]])));
-  clips.push(rig.clip('Interact', 1.0, fps, keyed([[0, STAND], [0.38, REACH_OUT], [0.62, REACH_OUT], [1.0, STAND]])));
+  clips.push(
+    rig.clip(
+      'Pickup',
+      1.6,
+      fps,
+      keyed([
+        [0, STAND],
+        [0.45, REACH_DOWN],
+        [0.8, REACH_DOWN],
+        [1.15, PUT_IN_BAG],
+        [1.35, PUT_IN_BAG_TUCK],
+        [1.6, STAND],
+      ]),
+    ),
+  );
+  clips.push(
+    rig.clip(
+      'Interact',
+      1.5,
+      fps,
+      keyed([
+        [0, STAND],
+        [0.4, REACH_OUT],
+        [0.75, REACH_OUT],
+        [1.1, PUT_IN_BAG],
+        [1.3, PUT_IN_BAG_TUCK],
+        [1.5, STAND],
+      ]),
+    ),
+  );
   const { namaste, worship } = fitNamaste(rig, model);
   clips.push(rig.clip('Celebrate', 2.4, fps, keyed([[0, STAND], [0.6, worship], [1.2, worship], [1.8, worship], [2.4, STAND]])));
   // Offering and praying at the temple: hands to chest, bowing with hands joined overhead at the top of the head (reverent worship posture), and back up.

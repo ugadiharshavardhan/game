@@ -78,27 +78,63 @@ export class LeaderboardService {
             });
           }
         }
-        individualList.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs);
-        individualList.forEach((r, i) => {
-          r.rank = i + 1;
-        });
       }
 
-      // If personal runs is empty (e.g. unauthenticated guest player or new profile),
-      // populate the Personal tab with their local device runs:
-      if (myList.length === 0 && localScores.length > 0) {
-        myList = localScores.map((s, idx) => ({
-          resultId: `local_${idx}_${s.playedAt}`,
-          rank: idx + 1,
-          attempts: localScores.length,
-          score: s.score,
-          durationMs: s.durationMs,
-          complete: s.complete,
-          items: s.items,
-          playedAt: new Date(s.playedAt).toISOString(),
-          teamId: s.teamId ?? null,
-        }));
+      // 1. Deduplicate global leaderboard by player name: each player appears ONLY ONCE with their HIGHEST score:
+      const bestByPlayer = new Map<string, LeaderboardRow>();
+      for (const row of individualList) {
+        const key = row.displayName.trim().toLowerCase();
+        const existing = bestByPlayer.get(key);
+        if (!existing) {
+          bestByPlayer.set(key, { ...row });
+        } else {
+          // If this row has a higher score (or equal score but faster duration), replace it
+          if (row.score > existing.score || (row.score === existing.score && row.durationMs < existing.durationMs)) {
+            bestByPlayer.set(key, {
+              ...row,
+              attempts: Math.max(existing.attempts, row.attempts) + 1,
+              isMe: existing.isMe || row.isMe,
+            });
+          } else {
+            existing.attempts += 1;
+            existing.isMe = existing.isMe || row.isMe;
+          }
+        }
       }
+
+      individualList = Array.from(bestByPlayer.values())
+        .sort((a, b) => b.score - a.score || a.durationMs - b.durationMs)
+        .map((r, idx) => ({ ...r, rank: idx + 1 }));
+
+      // 2. Personal leaderboard: show ALL games the account holder played (merge remote and local history)
+      const mergedRuns: MyRun[] = [...myList];
+      for (const local of localScores) {
+        const locTime = Number(local.playedAt);
+        const exists = mergedRuns.some((m) => {
+          const mTime = new Date(m.playedAt).getTime();
+          return m.score === local.score && Math.abs(mTime - locTime) < 10000;
+        });
+        if (!exists) {
+          mergedRuns.push({
+            resultId: `local_${local.playedAt}_${local.score}`,
+            rank: 0,
+            attempts: 1,
+            score: local.score,
+            durationMs: local.durationMs,
+            complete: local.complete,
+            items: local.items,
+            playedAt: new Date(local.playedAt).toISOString(),
+            teamId: local.teamId ?? null,
+          });
+        }
+      }
+
+      // Sort personal runs by score (or played date) and assign individual ranks
+      mergedRuns.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs);
+      mergedRuns.forEach((r, idx) => {
+        r.rank = idx + 1;
+      });
+      myList = mergedRuns;
 
       this.boards.set({ individual: individualList, teams: teamList });
       this.mine.set(myList);
