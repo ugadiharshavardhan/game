@@ -51,6 +51,9 @@ interface Ghost {
   materials: MeshStandardMaterial[];
   tag: Sprite;
   tagTexture: CanvasTexture;
+  tagCanvas: HTMLCanvasElement;
+  lastPercent: number;
+  lastCollected: number;
   last: Vector3;
   name: string;
   /** Time owed to the mixer, for teammates whose animation runs at a lower rate. */
@@ -136,6 +139,14 @@ export class GhostPlayers {
         ghost.lag = 0;
       }
 
+      if (peer.completionPercent !== ghost.lastPercent || peer.collected !== ghost.lastCollected || peer.displayName !== ghost.name) {
+        ghost.lastPercent = peer.completionPercent;
+        ghost.lastCollected = peer.collected;
+        ghost.name = peer.displayName;
+        drawTagCanvas(ghost.tagCanvas, ghost.name, ghost.lastPercent, ghost.lastCollected);
+        ghost.tagTexture.needsUpdate = true;
+      }
+
       const fade = peer.presence * (distance > TAG_FAR ? 0 : 1);
       for (const m of ghost.materials) m.opacity = OPACITY * peer.presence;
       // The tag stays a readable size at any distance, and bows out before it becomes clutter.
@@ -167,7 +178,7 @@ export class GhostPlayers {
     const root = new Group();
     root.name = `ghost:${peer.playerId}`;
     root.add(model);
-    const { sprite, texture } = nameTag(peer.displayName);
+    const { sprite, texture, canvas } = nameTag(peer.displayName, peer.completionPercent, peer.collected);
     sprite.position.set(0, 1.95, 0);
     root.add(sprite);
     this.scene.add(root);
@@ -180,6 +191,9 @@ export class GhostPlayers {
       materials,
       tag: sprite,
       tagTexture: texture,
+      tagCanvas: canvas,
+      lastPercent: peer.completionPercent,
+      lastCollected: peer.collected,
       last: new Vector3(peer.x, peer.y, peer.z),
       name: peer.displayName,
       lag: 0,
@@ -241,27 +255,42 @@ function ghostMaterial(source: Material): MeshStandardMaterial {
   return m;
 }
 
-/** A name, drawn once into a small canvas and hung over their head facing wherever you are. */
-function nameTag(name: string): { sprite: Sprite; texture: CanvasTexture } {
+/** Draws the name, completion percentage, and collected items on the floating canvas. */
+function drawTagCanvas(canvas: HTMLCanvasElement, name: string, percent = 0, collected = 0): void {
+  const g = canvas.getContext('2d');
+  if (!g) return;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+
+  // Player Name with dark halo for readability
+  g.font = '700 36px "Inter", system-ui, sans-serif';
+  g.lineWidth = 8;
+  g.strokeStyle = 'rgba(8,10,18,0.9)';
+  g.strokeText(name, canvas.width / 2, 32);
+  g.fillStyle = '#f2e3c2';
+  g.fillText(name, canvas.width / 2, 32);
+
+  // Subtext: Completion % and Collected offerings
+  const isComplete = percent >= 100;
+  const subtext = isComplete ? '🙏 Puja 100%' : `${percent}% · 🎒 ${collected}`;
+  g.font = '600 24px "Inter", system-ui, sans-serif';
+  g.lineWidth = 6;
+  g.strokeStyle = 'rgba(8,10,18,0.9)';
+  g.strokeText(subtext, canvas.width / 2, 70);
+  g.fillStyle = isComplete ? '#f6ad55' : '#e2d4b7';
+  g.fillText(subtext, canvas.width / 2, 70);
+}
+
+/** A name and progress badge, drawn into a small canvas and hung over their head facing wherever you are. */
+function nameTag(name: string, percent = 0, collected = 0): { sprite: Sprite; texture: CanvasTexture; canvas: HTMLCanvasElement } {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 96;
-  const g = canvas.getContext('2d');
-  if (g) {
-    g.clearRect(0, 0, canvas.width, canvas.height);
-    g.font = '600 44px "Inter", system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    // A dark halo, so a pale name stays readable against a pale wall.
-    g.lineWidth = 8;
-    g.strokeStyle = 'rgba(8,10,18,0.85)';
-    g.strokeText(name, canvas.width / 2, canvas.height / 2);
-    g.fillStyle = '#f2e3c2';
-    g.fillText(name, canvas.width / 2, canvas.height / 2);
-  }
+  drawTagCanvas(canvas, name, percent, collected);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   const sprite = new Sprite(new SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, fog: false }));
   sprite.renderOrder = 4;
-  return { sprite, texture };
+  return { sprite, texture, canvas };
 }

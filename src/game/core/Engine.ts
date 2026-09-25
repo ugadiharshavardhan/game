@@ -102,7 +102,7 @@ export class Engine {
   /** The sun, whose shadow map the PerformanceManager resizes and paces. */
   private sun: DirectionalLight | null = null;
   /** What this player sends teammates each frame: one object, refilled, never reallocated. */
-  private readonly outgoing: LocalPeerState = { x: 0, y: 0, z: 0, yaw: 0, state: 'idle', indoors: false, given: 0 };
+  private readonly outgoing: LocalPeerState = { x: 0, y: 0, z: 0, yaw: 0, state: 'idle', indoors: false, given: 0, collected: 0, completionPercent: 0 };
   private lastFrameAt = 0;
   private mapTimer = 0;
   private paused = false;
@@ -363,7 +363,14 @@ export class Engine {
         out.yaw = this.player.yaw;
         out.state = this.player.state.value;
         out.indoors = this.world?.shelter?.isSafe ?? false;
-        out.given = this.gameplay.inventory.snapshot().stacks.length;
+        const snap = this.gameplay.inventory.snapshot();
+        let totalOffered = 0;
+        for (const count of Object.values(snap.offered)) {
+          totalOffered += count;
+        }
+        out.given = totalOffered;
+        out.collected = snap.used;
+        out.completionPercent = snap.pujaComplete ? 100 : Math.min(100, Math.round((totalOffered / 25) * 100));
         this.options.link.send(out);
       }
       this.ghosts?.update(dt);

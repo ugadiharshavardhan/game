@@ -9,6 +9,7 @@ import { ItemIcon } from './InventoryUI';
 import { Minimap } from '../map/Minimap';
 import { MoonUI } from './MoonUI';
 import { NightClockUI } from './NightClockUI';
+import { TeamHUD } from './TeamHUD';
 
 interface HudProps {
   device: InputDevice;
@@ -149,6 +150,9 @@ export function Hud({ device, snapshot, icons, onOpenBag, onOpenMap, cinematic }
       <div className="safe-top pointer-events-none absolute right-3 top-[4.25rem]">
         <Minimap onOpen={onOpenMap} />
       </div>
+
+      {/* When in a team game: show players joined, collected items, and offering completion % */}
+      <TeamHUD snapshot={snapshot} />
 
       {area && (
         <div key={area.key} className="safe-top absolute inset-x-0 top-40 flex justify-center sm:top-28">

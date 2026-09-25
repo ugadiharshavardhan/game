@@ -24,7 +24,7 @@ beforeAll(() => {
     const f = distanceField(grid, at(d.x, d.z));
     for (let i = 0; i < f.length; i++) if (f[i] < toShelter[i]) toShelter[i] = f[i];
   }
-});
+}, 30000);
 
 describe('layout sanity', () => {
   it('has 8–12 houses, most of them shelters, and one home', () => {

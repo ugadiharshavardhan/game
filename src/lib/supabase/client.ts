@@ -18,7 +18,12 @@ function url(): string | undefined {
 }
 
 function key(): string | undefined {
-  return import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || undefined;
+  return (
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.VITE_SUPABASE_KEY ||
+    undefined
+  );
 }
 
 /** Set by the auth bridge once Clerk has loaded; null when signed out. */

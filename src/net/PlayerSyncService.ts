@@ -21,6 +21,8 @@ export interface LocalPeerState {
   state: string;
   indoors: boolean;
   given: number;
+  collected?: number;
+  completionPercent?: number;
 }
 
 interface Track {
@@ -75,6 +77,8 @@ export class PlayerSyncService {
       state: state.state,
       indoors: state.indoors,
       given: state.given,
+      collected: state.collected ?? 0,
+      completionPercent: state.completionPercent ?? 0,
     };
     const still =
       this.last &&
@@ -83,7 +87,9 @@ export class PlayerSyncService {
       this.last.yaw === rounded.yaw &&
       this.last.state === rounded.state &&
       this.last.indoors === rounded.indoors &&
-      this.last.given === rounded.given;
+      this.last.given === rounded.given &&
+      this.last.collected === rounded.collected &&
+      this.last.completionPercent === rounded.completionPercent;
     // Standing still is still worth saying once a second, so a ghost never looks like a dropout.
     if (still && now - this.lastSentAt < 1000) return;
     this.lastSentAt = now;
@@ -137,6 +143,9 @@ export class PlayerSyncService {
         state: track.to.state,
         indoors: track.to.indoors,
         presence: track.presence,
+        given: track.to.given ?? 0,
+        collected: track.to.collected ?? 0,
+        completionPercent: track.to.completionPercent ?? Math.min(100, Math.round(((track.to.given ?? 0) / 25) * 100)),
       });
     }
     return out;

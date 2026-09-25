@@ -14,6 +14,8 @@ export interface LocalPeerState {
   state: string;
   indoors: boolean;
   given: number;
+  collected?: number;
+  completionPercent?: number;
 }
 
 export interface PeerLink {

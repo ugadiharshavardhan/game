@@ -17,6 +17,7 @@ import { useGameEvent } from './ui/hooks/useGameEvent';
 import { MainMenu } from './ui/menu/MainMenu';
 import { services, useObservable } from './ui/services';
 import { DEFAULT_SETTINGS, withDefaults } from './ui/settings';
+import { saveScore } from './ui/leaderboard';
 
 /**
  * The app-level state machine: menu ⇄ playing ⇄ results, with a lobby's session and the short
@@ -120,6 +121,23 @@ export default function App() {
     setAppState('results');
     const sessionId = runSessionRef.current;
     if (sessionId) session.finish(sessionId);
+
+    // Persist run locally so it immediately appears on the leaderboard
+    try {
+      saveScore({
+        displayName: profile?.displayName || 'Devotee',
+        campus: profile?.campus || '',
+        score: Math.round(r.breakdown.total),
+        durationMs: r.stats.durationMs,
+        complete: r.stats.pujaComplete,
+        items: r.stats.itemsCollected,
+        playedAt: Date.now(),
+        teamId: sessionId,
+      });
+    } catch {
+      // Local storage fallback
+    }
+
     if (profile) void scores.submit(sessionId, r);
   });
 

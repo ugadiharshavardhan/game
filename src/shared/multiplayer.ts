@@ -183,8 +183,12 @@ export interface PeerState {
   state: string;
   /** Inside a shelter: the ghost is not drawn in the lane. */
   indoors: boolean;
-  /** Offerings given, for the lobby's little progress line. */
+  /** Offerings given, for the lobby's little progress line and team progress. */
   given: number;
+  /** Offerings currently carried in bag. */
+  collected?: number;
+  /** Percentage of completion based on offerings in temple (0-100). */
+  completionPercent?: number;
 }
 
 /** A teammate as the renderer wants them: smoothed, with the jitter of the network taken out. */
@@ -199,6 +203,12 @@ export interface RemotePeer {
   indoors: boolean;
   /** 0..1 — fades in when they arrive and out when they go quiet. */
   presence: number;
+  /** Offerings given at temple. */
+  given: number;
+  /** Offerings currently carried in bag. */
+  collected: number;
+  /** Completion percentage based on offerings in temple. */
+  completionPercent: number;
 }
 
 // ---- errors ------------------------------------------------------------------------------------

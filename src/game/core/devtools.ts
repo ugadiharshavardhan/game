@@ -142,7 +142,7 @@ export async function installDevtools(h: DevHandle): Promise<void> {
     ghost(name = 'Arjun', x = 0, z = 0, state = 'idle') {
       const id = `PLY_${name.toUpperCase().slice(0, 5)}`;
       const existing = h.fakePeers.find((p: RemotePeer) => p.playerId === id);
-      const peer = existing ?? { playerId: id, displayName: name, x, y: 0, z, yaw: 0, state, indoors: false, presence: 1 };
+      const peer = existing ?? { playerId: id, displayName: name, x, y: 0, z, yaw: 0, state, indoors: false, presence: 1, given: 0, collected: 0, completionPercent: 0 };
       Object.assign(peer, { displayName: name, x, z, state, presence: 1 });
       if (!existing) h.fakePeers.push(peer);
       return h.fakePeers.length;
