@@ -6,7 +6,7 @@
  * Nothing here imports the engine or React, so the game can draw teammates without knowing
  * where they came from.
  */
-import type { ScoreBreakdown } from './types.ts';
+import type { GameSettings, ScoreBreakdown } from './types.ts';
 
 export type CharacterModel = 'devotee' | 'woman' | 'pujari';
 export type PlayerGender = 'male' | 'female' | 'other';
@@ -18,16 +18,18 @@ export interface PlayerProfile {
   displayName: string;
   /** Optional, for the contest's campus column. */
   campus: string;
-  gender?: PlayerGender;
-  character?: CharacterModel;
+  /** The model the player walks the village as. */
+  character: CharacterModel;
+  gender: PlayerGender | null;
+  /** What the player set on the settings screen; anything missing is the default. */
+  settings: Partial<GameSettings>;
+  /** Best counted score, from the stored runs; null before the first one. */
+  bestScore: number | null;
+  /** Counted runs, from the stored runs. */
+  gamesPlayed: number;
   createdAt: string;
-  lastActiveAt?: string;
-  bestIndividualScore?: number;
-  bestScore?: number;
-  gamesPlayed?: number;
+  lastActiveAt: string;
 }
-
-export type IndividualLeaderboardRow = LeaderboardRow;
 
 export type TeamStatus = 'waiting' | 'in_game' | 'closed';
 export type MemberRole = 'creator' | 'host' | 'member';
@@ -127,6 +129,19 @@ export interface RunAccepted {
   teamRank: number | null;
 }
 
+/** One of the player's own counted runs, placed among all of them. */
+export interface MyRun {
+  resultId: string;
+  rank: number;
+  attempts: number;
+  score: number;
+  durationMs: number;
+  complete: boolean;
+  items: number;
+  teamId: string | null;
+  playedAt: string;
+}
+
 export interface LeaderboardRow {
   rank: number;
   displayName: string;
@@ -211,11 +226,6 @@ export type ErrorCode =
   | 'BAD_RUN'
   | 'RATE_LIMITED'
   | 'CODE_GENERATION_FAILED'
-  | 'GAME_ALREADY_STARTED'
-  | 'NOT_TEAM_CREATOR'
-  | 'INVALID_TEAM_NAME'
-  | 'INVALID_TEAM_CODE'
-  | 'DATABASE_SETUP_REQUIRED'
   | 'AUTH_REJECTED'
   | 'NETWORK';
 
@@ -223,18 +233,13 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   NOT_AUTHENTICATED: 'Please log in with Google before joining a team.',
   PROFILE_REQUIRED: 'Please enter your name before playing.',
   PROFILE_FAILED: 'We couldn’t save your name. Please try again.',
-  BAD_NAME: 'Please enter a valid team name.',
+  BAD_NAME: 'Please enter a valid name.',
   ALREADY_IN_TEAM: 'You are already in an active team. Leave that team before joining another.',
   ALREADY_MEMBER: 'You are already a member of this team.',
   TEAM_NOT_FOUND: 'Team not found. Please check the 6-character code.',
   TEAM_CLOSED: 'This team has been closed.',
   TEAM_FULL: 'This team is full (4/4 players).',
   TEAM_STARTED: 'This team has already started the game.',
-  GAME_ALREADY_STARTED: 'This team has already started the game.',
-  NOT_TEAM_CREATOR: 'Only the team creator can start the game.',
-  INVALID_TEAM_NAME: 'Please enter a valid team name (1-24 characters).',
-  INVALID_TEAM_CODE: 'Please enter a 6-character team code.',
-  DATABASE_SETUP_REQUIRED: 'Database setup required: please run the SQL migration in Supabase SQL editor.',
   NOT_IN_TEAM: 'You are not in a team.',
   NOT_HOST: 'Only the team host can start the game.',
   NOT_EVERYONE_READY: 'Everyone has to be ready before the game can start.',

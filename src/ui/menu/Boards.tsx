@@ -1,37 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
-import { formatDuration, loadScores } from '../leaderboard';
+import { useEffect, useState } from 'react';
+import { formatDuration } from '../leaderboard';
 import { services, useObservable } from '../services';
 
 export type BoardTab = 'personal' | 'global' | 'teams';
 
 /**
- * Three distinct boards:
- * 1. Personal: The player's own past runs on this device / account, deduplicated.
- * 2. Global: The worldwide individual players board.
- * 3. Teams: Each team's single best round.
+ * Three distinct boards, all from Postgres:
+ * 1. Personal: the signed-in player's own counted runs, best first.
+ * 2. Global: every player's single best valid run.
+ * 3. Teams: each team's single best round.
  */
 export function Boards({ onBack, initial = 'global' }: { onBack: () => void; initial?: BoardTab | 'individual' }) {
-  const { boards } = services();
+  const { boards, profiles } = services();
   const data = useObservable(boards.boards);
+  const personalRuns = useObservable(boards.mine);
   const loading = useObservable(boards.loading);
   const error = useObservable(boards.error);
+  const profile = useObservable(profiles.profile);
   const [tab, setTab] = useState<BoardTab>(initial === 'individual' ? 'global' : initial);
 
   useEffect(() => {
     void boards.refresh();
   }, [boards]);
-
-  // Load deduplicated local personal runs
-  const personalRuns = useMemo(() => {
-    const list = loadScores();
-    const seen = new Set<string>();
-    return list.filter((item) => {
-      const key = `${item.score}_${item.durationMs}_${item.playedAt ?? ''}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, []);
 
   const tabs: Array<[BoardTab, string]> = [
     ['personal', 'Personal'],
@@ -59,7 +49,7 @@ export function Boards({ onBack, initial = 'global' }: { onBack: () => void; ini
       </div>
 
       <div className="mt-4 min-h-[14rem]">
-        {error && tab !== 'personal' ? (
+        {error ? (
           <div className="px-3 py-10 text-center text-sm text-[#d98a7a]">
             <p>{error}</p>
             <button
@@ -72,22 +62,24 @@ export function Boards({ onBack, initial = 'global' }: { onBack: () => void; ini
           </div>
         ) : tab === 'personal' ? (
           personalRuns.length === 0 ? (
-            <Empty loading={false} what="No personal runs recorded yet. Complete a night's seva to see your score!" />
+            <Empty loading={loading} what="No personal runs recorded yet. Complete a night's seva to see your score!" />
           ) : (
             <ol className="space-y-1.5">
-              {personalRuns.map((run, idx) => (
+              {personalRuns.map((run) => (
                 <li
-                  key={`personal-${idx}-${run.playedAt ?? run.score}`}
+                  key={run.resultId}
                   className="flex items-baseline gap-3 rounded-lg border border-night-700/60 bg-night-900/70 px-3.5 py-2.5 text-sm transition hover:border-lamp-400/40"
                 >
-                  <span className="w-6 shrink-0 font-bold tabular-nums text-lamp-400/80">#{idx + 1}</span>
+                  <span className="w-6 shrink-0 font-bold tabular-nums text-lamp-400/80">#{run.rank}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium text-lamp-200">
-                      {run.displayName || 'You'}
+                      {profile?.displayName || 'You'}
+                      {run.teamId && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-dusk-400">team</span>}
                     </span>
                     <span className="block text-[10px] uppercase tracking-[0.18em] text-dusk-400">
-                      {run.pujaComplete ? 'Puja Complete 🙏' : 'Unfinished Run'}
-                      {run.campus ? ` · ${run.campus}` : ''}
+                      {run.complete ? 'Puja Complete 🙏' : 'Unfinished Run'}
+                      {' · '}
+                      {new Date(run.playedAt).toLocaleDateString()}
                     </span>
                   </span>
                   <span className="w-16 text-right font-display text-base font-bold tabular-nums text-lamp-400">

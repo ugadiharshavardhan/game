@@ -1,6 +1,5 @@
-import { UserButton } from '@clerk/react';
+import { UserButton, useUser } from '@clerk/react';
 import { useEffect, useState } from 'react';
-import { getAuthenticatedUser } from '../../net/jwtAuth';
 import type { GameSettings } from '../../shared/types';
 import { services, useObservable } from '../services';
 import { Boards } from './Boards';
@@ -35,6 +34,8 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
   const profileSaving = useObservable(profiles.saving);
   const profileError = useObservable(profiles.error);
   const team = useObservable(teams.snapshot);
+  const { user } = useUser();
+  const email = user?.primaryEmailAddress?.emailAddress ?? '';
   const [chosen, setPanel] = useState<MenuPanel>('home');
   // Only gate to the name form if the player has not created or loaded a profile yet.
   const hasProfile = Boolean(profile?.displayName);
@@ -134,7 +135,7 @@ export function MainMenu({ onPlaySolo, onTutorial, settings, onSettings }: MainM
             </div>
             <p className="mt-6 text-center text-[11px] text-dusk-400">
               Playing as <span className="text-lamp-200">{profile?.displayName}</span>
-              {getAuthenticatedUser().email ? ` · ${getAuthenticatedUser().email}` : ''}
+              {email ? ` · ${email}` : ''}
               {profile?.campus ? ` · ${profile.campus}` : ''}
               {' · '}
               <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-lamp-200" onClick={() => setPanel('name')}>

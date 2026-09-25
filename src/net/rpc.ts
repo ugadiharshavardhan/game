@@ -37,10 +37,7 @@ function toServiceError(fn: string, error: PostgrestLikeError, status: number): 
     if (import.meta.env.DEV) console.info(`[team-service] ${fn} → ${known}`, error.details ?? '');
     return new TeamServiceError(known, error.details ?? '');
   }
-  if (error.code === '42501' || error.code === 'PGRST202') {
-    console.error(`[team-service] ${fn} requires running the latest SQL migration in Supabase SQL editor.`);
-    return new TeamServiceError('DATABASE_SETUP_REQUIRED', message);
-  }
+  console.error(`[team-service] ${fn} failed (HTTP ${status})`, error);
   // A token the project does not trust: almost always Clerk not added under Supabase
   // Authentication → Third-Party Auth, or the Clerk Supabase integration not activated.
   if (status === 401 || error.code === 'PGRST301' || error.code === 'PGRST302') {

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { getAuthenticatedUser } from '../../net/jwtAuth';
+import { useUser } from '@clerk/react';
+import { useEffect, useState } from 'react';
 import type { PlayerProfile, SessionPlayer, TeamSnapshot } from '../../shared/multiplayer';
-import type { LeaderboardEntry, RunResult } from '../../shared/types';
-import { formatDuration, saveScore } from '../leaderboard';
+import type { RunResult } from '../../shared/types';
+import { formatDuration } from '../leaderboard';
 import { Boards } from '../menu/Boards';
 import { services, useObservable } from '../services';
 
@@ -21,38 +21,24 @@ interface ResultsScreenProps {
  *
  * The number shown is the database's, not this browser's — the client's own arithmetic is only a
  * placeholder until the run comes back accepted, which is what stops a modified client writing
- * its own leaderboard entry. Alone, that is the local board; in a team, it is the player's score,
- * their team's total, and where the team stands.
+ * its own leaderboard entry. Alone, that is where the run sits among the player's own; in a team,
+ * it is the player's score, their team's total, and where the team stands.
  */
 export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, onMainMenu }: ResultsScreenProps) {
   const { scores, sync } = services();
   const accepted = useObservable(scores.accepted);
   const rejected = useObservable(scores.rejected);
   const submitting = useObservable(scores.submitting);
+  const placing = useObservable(scores.placing);
   const { stats } = result;
   const breakdown = accepted?.breakdown ?? result.breakdown;
   const [view, setView] = useState<'result' | 'players' | 'teams'>('result');
   // The round's own roster, kept live by the team channel while teammates finish.
   const round = sessionId && team?.session?.id === sessionId ? team : null;
 
-  const authUser = getAuthenticatedUser();
-  const displayName = profile?.displayName || authUser.displayName || 'Devotee';
-  const email = authUser.email;
-
-  // The device's own list is kept whatever the network does, so a solo player always has one.
-  const local = useMemo(
-    () =>
-      saveScore({
-        score: result.breakdown.total,
-        durationMs: stats.durationMs,
-        playedAt: result.completedAt,
-        displayName,
-        email: email ?? undefined,
-        campus: profile?.campus,
-        pujaComplete: stats.pujaComplete,
-      }),
-    [result.breakdown.total, stats.durationMs, result.completedAt, displayName, email, profile?.campus, stats.pujaComplete],
-  );
+  const { user } = useUser();
+  const displayName = profile?.displayName || user?.fullName?.trim() || 'Devotee';
+  const email = user?.primaryEmailAddress?.emailAddress ?? null;
 
   // While you are reading your score your teammates are still out there. Their ghosts keep
   // arriving, so the panel below can show what they are doing rather than a row of dashes.
@@ -168,8 +154,24 @@ export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, o
         )}
         {submitting && <p className="mt-2 text-[11px] text-dusk-400">Saving your score…</p>}
         {!submitting && !accepted && !rejected && !profile && <p className="mt-2 text-[11px] text-dusk-400">Sign in to put your runs on the board.</p>}
-        {rejected && <p className="mt-2 text-[11px] text-[#d98a7a]">{rejected}</p>}
-        {!round && local.rank > 0 && <p className="mt-1 text-[11px] text-dusk-400">Best of {local.scores.length} on this device: #{local.rank}</p>}
+        {rejected && (
+          <p className="mt-2 text-[11px] text-[#d98a7a]">
+            {rejected}
+            {scores.canRetry() && (
+              <>
+                {' '}
+                <button type="button" onClick={() => void scores.retry()} className="underline decoration-dotted underline-offset-2 hover:text-lamp-200">
+                  Try again
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {!round && placing && placing.attempts > 1 && (
+          <p className="mt-1 text-[11px] text-dusk-400">
+            #{placing.rank} of your {placing.attempts} runs
+          </p>
+        )}
 
         {round && (
           <section className="mt-6 rounded-2xl border border-lamp-400/20 bg-night-900/50 p-4 text-left">
@@ -225,8 +227,6 @@ export function ResultsScreen({ result, profile, team, sessionId, onPlayAgain, o
     </main>
   );
 }
-
-export type { LeaderboardEntry };
 
 function RoundState({ player, live }: { player: SessionPlayer; live: boolean }) {
   if (player.score !== null) {

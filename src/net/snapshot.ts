@@ -3,10 +3,13 @@
  * These are the only places the two meet.
  */
 import type {
+  CharacterModel,
   CompletionState,
   GameSession,
   LeaderboardRow,
   MemberRole,
+  MyRun,
+  PlayerGender,
   PlayerProfile,
   RunAccepted,
   SessionPlayer,
@@ -18,13 +21,18 @@ import type {
   TeamSnapshot,
   TeamStatus,
 } from '../shared/multiplayer';
-import type { ScoreBreakdown } from '../shared/types';
+import type { GameSettings, ScoreBreakdown } from '../shared/types';
 
 export interface RawProfile {
   id: string;
   username: string;
   display_name: string;
   campus: string;
+  character?: CharacterModel | null;
+  gender?: PlayerGender | null;
+  settings?: Partial<GameSettings> | null;
+  best_score?: number | null;
+  games_played?: number | null;
   created_at: string;
   last_active_at: string;
 }
@@ -111,6 +119,18 @@ export interface RawRunAccepted {
   team_rank: number | null;
 }
 
+export interface RawMyRun {
+  result_id: string;
+  run_rank: number;
+  attempts: number;
+  score: number;
+  completion_time_ms: number;
+  completed: boolean;
+  items_collected: number;
+  team_id: string | null;
+  created_at: string;
+}
+
 export interface RawIndividualRow {
   rank: number;
   display_name: string;
@@ -141,8 +161,27 @@ export function toProfile(raw: RawProfile): PlayerProfile {
     username: raw.username,
     displayName: raw.display_name,
     campus: raw.campus,
+    character: raw.character ?? 'devotee',
+    gender: raw.gender ?? null,
+    settings: raw.settings ?? {},
+    bestScore: raw.best_score ?? null,
+    gamesPlayed: raw.games_played ?? 0,
     createdAt: raw.created_at,
     lastActiveAt: raw.last_active_at,
+  };
+}
+
+export function toMyRun(raw: RawMyRun): MyRun {
+  return {
+    resultId: raw.result_id,
+    rank: raw.run_rank,
+    attempts: raw.attempts,
+    score: raw.score,
+    durationMs: raw.completion_time_ms,
+    complete: raw.completed,
+    items: raw.items_collected,
+    teamId: raw.team_id,
+    playedAt: raw.created_at,
   };
 }
 

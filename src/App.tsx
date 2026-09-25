@@ -16,7 +16,7 @@ import { TutorialCard } from './ui/components/TutorialCard';
 import { useGameEvent } from './ui/hooks/useGameEvent';
 import { MainMenu } from './ui/menu/MainMenu';
 import { services, useObservable } from './ui/services';
-import { loadSettings, saveSettings } from './ui/settings';
+import { DEFAULT_SETTINGS, withDefaults } from './ui/settings';
 
 /**
  * The app-level state machine: menu ⇄ playing ⇄ results, with a lobby's session and the short
@@ -43,7 +43,7 @@ const { profiles, teams, session, sync, scores } = services();
 export default function App() {
   const [appState, setAppState] = useState<AppState>('menu');
   const [paused, setPaused] = useState(false);
-  const [settings, setSettings] = useState<GameSettings>(loadSettings);
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [bagOpen, setBagOpen] = useState(false);
   const bagOpenRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -73,6 +73,18 @@ export default function App() {
     stateRef.current = appState;
     settingsRef.current = settings;
   }, [appState, settings]);
+
+  // The account's saved settings arrive with its profile; a different account brings its own.
+  const settingsOwner = useRef<string | null>(null);
+  useEffect(() => {
+    const owner = profile?.id ?? null;
+    if (owner === settingsOwner.current) return;
+    settingsOwner.current = owner;
+    const next = withDefaults(profile?.settings);
+    setSettings(next);
+    EventBus.emit('game:settings', next);
+    EventBus.emit('game:camera-settings', { sensitivity: next.sensitivity, invertY: next.invertY });
+  }, [profile]);
 
   useGameEvent('ui:inventory', setBag);
   useGameEvent('ui:item-icons', ({ icons: i }) => setIcons(i));
@@ -108,7 +120,7 @@ export default function App() {
     setAppState('results');
     const sessionId = runSessionRef.current;
     if (sessionId) session.finish(sessionId);
-    void scores.submit(sessionId, r, profile?.bestScore ?? 0);
+    if (profile) void scores.submit(sessionId, r);
   });
 
   // The host pressed start (or this player refreshed mid-round): everyone on the menu walks into
@@ -139,7 +151,8 @@ export default function App() {
 
   const changeSettings = useCallback((next: GameSettings) => {
     setSettings(next);
-    saveSettings(next);
+    profiles.saveSettings(next);
+    EventBus.emit('game:settings', next);
     EventBus.emit('game:camera-settings', { sensitivity: next.sensitivity, invertY: next.invertY });
   }, []);
   const cameraSettings: CameraSettings = { sensitivity: settings.sensitivity, invertY: settings.invertY };

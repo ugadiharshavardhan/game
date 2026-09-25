@@ -88,14 +88,3 @@ export interface RunResult {
   efficiency: number;
   completedAt: number;
 }
-
-/** One line on the best-scores list. */
-export interface LeaderboardEntry {
-  score: number;
-  durationMs: number;
-  playedAt: number;
-  displayName?: string;
-  email?: string;
-  campus?: string;
-  pujaComplete?: boolean;
-}

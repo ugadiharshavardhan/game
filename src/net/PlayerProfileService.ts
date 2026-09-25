@@ -1,63 +1,38 @@
 /**
  * Who is playing: the signed-in account's row in `profiles`.
  *
- * Clerk owns the account; the database owns the profile (name, campus, username, timestamps).
- * When online, the row is synchronized with Supabase. When offline or if the team service is
- * not reachable, the profile is preserved locally so the player can always enter the village
- * and enjoy the game.
+ * Clerk owns the account; the database owns the profile (name, campus, character, settings,
+ * timestamps) and works out the career numbers from the stored runs. Nothing about the player is
+ * kept in the browser beyond this copy of the row.
  */
-import { createBrowserClient, isSupabaseConfigured } from '../lib/supabase/client';
 import { cleanCampus, cleanName } from '../shared/identity';
-import type { PlayerProfile } from '../shared/multiplayer';
+import type { CharacterModel, PlayerGender, PlayerProfile } from '../shared/multiplayer';
+import type { GameSettings } from '../shared/types';
 import { Observable } from './Observable';
-import { rpc } from './rpc';
+import { errorText, rpc } from './rpc';
 import { toProfile, type RawProfile } from './snapshot';
 
 export type ProfileState = 'signed-out' | 'loading' | 'ready';
 
-const STORAGE_PREFIX = 'moonlight-seva.profile.';
-const GLOBAL_KEY = 'moonlight-seva.player';
-
-function makeLocalId(): string {
-  return 'player_' + Math.random().toString(36).substring(2, 10);
-}
-
-function readLocal(userId?: string | null): PlayerProfile | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    if (userId) {
-      const raw = localStorage.getItem(STORAGE_PREFIX + userId);
-      if (raw) return JSON.parse(raw) as PlayerProfile;
-    }
-    const globalRaw = localStorage.getItem(GLOBAL_KEY);
-    if (globalRaw) return JSON.parse(globalRaw) as PlayerProfile;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLocal(profile: PlayerProfile): void {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    if (profile.id) {
-      localStorage.setItem(STORAGE_PREFIX + profile.id, JSON.stringify(profile));
-    }
-    localStorage.setItem(GLOBAL_KEY, JSON.stringify(profile));
-  } catch {
-    // Ignore private browsing storage quota issues
-  }
-}
+/** A slider dragged across its range is one save, not fifty. */
+const SETTINGS_DEBOUNCE_MS = 600;
 
 export class PlayerProfileService {
-  readonly profile = new Observable<PlayerProfile | null>(readLocal());
+  readonly profile = new Observable<PlayerProfile | null>(null);
   readonly state = new Observable<ProfileState>('signed-out');
   readonly saving = new Observable(false);
   readonly error = new Observable<string | null>(null);
   private userId: string | null = null;
+  private pendingSettings: GameSettings | null = null;
+  private settingsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => void this.flushSettings());
+  }
 
   /** The auth bridge calls this whenever the signed-in account changes. */
   async load(userId: string | null): Promise<void> {
+    if (userId !== this.userId) this.dropPendingSettings();
     this.userId = userId;
     this.error.set(null);
     if (!userId) {
@@ -66,43 +41,27 @@ export class PlayerProfileService {
       return;
     }
     this.state.set('loading');
-
-    // First check local storage for instant availability
-    const cached = readLocal(userId);
-    if (cached) {
-      this.profile.set(cached);
+    try {
+      const raw = await rpc<RawProfile | null>('get_my_profile');
+      if (this.userId !== userId) return;
+      this.profile.set(raw ? toProfile(raw) : null);
+    } catch (error) {
+      if (this.userId !== userId) return;
+      this.error.set(errorText(error));
+      this.profile.set(null);
     }
+    this.state.set('ready');
+  }
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await createBrowserClient()
-          .from('profiles')
-          .select('id, username, display_name, campus, created_at, last_active_at')
-          .eq('id', userId)
-          .maybeSingle<RawProfile>();
-
-        if (this.userId !== userId) return;
-
-        if (error) {
-          // If the backend has a JWT / third-party auth or network error, log it
-          // but DO NOT show an aggressive red error on the initial welcome screen.
-          console.warn('[profiles] Remote profile could not be loaded; using local profile if present:', error.message);
-        } else if (data) {
-          const remote = toProfile(data);
-          if (cached) {
-            remote.character = cached.character ?? remote.character;
-            remote.gender = cached.gender ?? remote.gender;
-          }
-          writeLocal(remote);
-          this.profile.set(remote);
-        }
-      } catch (err) {
-        console.warn('[profiles] Could not connect to Supabase for profile load:', err);
-      }
-    }
-
-    if (this.userId === userId) {
-      this.state.set('ready');
+  /** Rereads the profile, e.g. after a run changed the best score. */
+  async refresh(): Promise<void> {
+    const userId = this.userId;
+    if (!userId || !this.profile.get()) return;
+    try {
+      const raw = await rpc<RawProfile | null>('get_my_profile');
+      if (raw && this.userId === userId) this.profile.set(toProfile(raw));
+    } catch (error) {
+      console.warn('[profiles] could not refresh the profile', error);
     }
   }
 
@@ -112,92 +71,66 @@ export class PlayerProfileService {
     if (!name || this.saving.get()) return null;
     this.saving.set(true);
     this.error.set(null);
-
-    const camp = cleanCampus(campus);
-    const userId = this.userId;
-    let saved: PlayerProfile | null = null;
-
-    if (isSupabaseConfigured()) {
-      try {
-        const raw = await rpc<RawProfile>('sync_clerk_profile', {
-          p_clerk_user_id: userId,
-          p_display_name: name,
-        });
-        if (raw) saved = toProfile(raw);
-      } catch {
-        try {
-          const raw = await rpc<RawProfile>('ensure_profile', { p_display_name: name, p_campus: camp });
-          if (raw) saved = toProfile(raw);
-        } catch (err) {
-          console.warn('[profiles] Backend profile save failed; saving locally so player can continue:', err);
-        }
-      }
+    try {
+      const profile = toProfile(await rpc<RawProfile>('ensure_profile', { p_display_name: name, p_campus: cleanCampus(campus) }));
+      this.profile.set(profile);
+      return profile;
+    } catch (error) {
+      this.error.set(errorText(error));
+      return null;
+    } finally {
+      this.saving.set(false);
     }
-
-    if (!saved) {
-      const existing = userId ? readLocal(userId) : null;
-      const baseName = name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 16) || 'devotee';
-      saved = {
-        id: userId || existing?.id || makeLocalId(),
-        username: existing?.username || `${baseName}_${Math.random().toString(36).substring(2, 6)}`,
-        displayName: name,
-        campus: camp,
-        gender: existing?.gender ?? 'male',
-        character: existing?.character ?? 'devotee',
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        lastActiveAt: new Date().toISOString(),
-        bestIndividualScore: existing?.bestIndividualScore ?? 0,
-        gamesPlayed: existing?.gamesPlayed ?? 0,
-      };
-    }
-
-    writeLocal(saved);
-    this.profile.set(saved);
-    this.error.set(null);
-    this.saving.set(false);
-    return saved;
   }
 
-  updateProfile(updates: Partial<PlayerProfile>): PlayerProfile | null {
-    const current = this.profile.get();
-    if (!current) return null;
-    const next: PlayerProfile = {
-      ...current,
-      ...updates,
-      displayName: updates.displayName ? cleanName(updates.displayName) : current.displayName,
-      campus: updates.campus !== undefined ? cleanCampus(updates.campus) : current.campus,
-    };
-    writeLocal(next);
-    this.profile.set(next);
-    return next;
-  }
-
-  recordRun(score: number): void {
-    const current = this.profile.get();
-    if (!current) return;
-    const profile: PlayerProfile = {
-      ...current,
-      gamesPlayed: (current.gamesPlayed ?? 0) + 1,
-      bestIndividualScore: Math.max(current.bestIndividualScore ?? 0, score),
-    };
-    writeLocal(profile);
-    this.profile.set(profile);
+  /** Name, campus, avatar and gender in one go, as the profile editor sends them. */
+  async saveDetails(displayName: string, campus: string, character: CharacterModel, gender: PlayerGender | null): Promise<PlayerProfile | null> {
+    if (!(await this.save(displayName, campus))) return null;
+    this.saving.set(true);
+    try {
+      const profile = toProfile(await rpc<RawProfile>('update_profile_details', { p_character: character, p_gender: gender }));
+      this.profile.set(profile);
+      return profile;
+    } catch (error) {
+      this.error.set(errorText(error));
+      return null;
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   clearError(): void {
     this.error.set(null);
   }
 
-  signOut(): void {
+  /** Saves the settings to the player's profile, shortly after the last change. */
+  saveSettings(settings: GameSettings): void {
+    if (!this.profile.get()) return;
+    this.pendingSettings = settings;
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.settingsTimer = setTimeout(() => void this.flushSettings(), SETTINGS_DEBOUNCE_MS);
+  }
+
+  private async flushSettings(): Promise<void> {
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    const settings = this.pendingSettings;
+    const userId = this.userId;
+    this.pendingSettings = null;
+    if (!settings || !userId) return;
     try {
-      if (typeof localStorage !== 'undefined') {
-        if (this.userId) localStorage.removeItem(STORAGE_PREFIX + this.userId);
-        localStorage.removeItem(GLOBAL_KEY);
-      }
-    } catch {
-      // Nothing
+      const saved = await rpc<Partial<GameSettings>>('save_settings', { p_settings: settings });
+      const current = this.profile.get();
+      if (current && current.id === userId && this.userId === userId) this.profile.set({ ...current, settings: saved ?? {} });
+    } catch (error) {
+      // The game keeps playing with the new settings; they just won't follow the player elsewhere.
+      console.warn('[profiles] could not save settings', error);
     }
-    this.profile.set(null);
-    this.state.set('signed-out');
+  }
+
+  private dropPendingSettings(): void {
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    this.pendingSettings = null;
   }
 }

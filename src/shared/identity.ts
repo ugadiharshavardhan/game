@@ -25,13 +25,3 @@ export function normaliseTeamCode(raw: string): string {
 export function isTeamCode(code: string): boolean {
   return new RegExp(`^[${TEAM_CODE_ALPHABET}]{${TEAM_CODE_LENGTH}}$`).test(code);
 }
-
-export function generateTeamCode(): string {
-  let code = '';
-  for (let i = 0; i < TEAM_CODE_LENGTH; i++) {
-    const idx = Math.floor(Math.random() * TEAM_CODE_ALPHABET.length);
-    code += TEAM_CODE_ALPHABET[idx];
-  }
-  return code;
-}
-

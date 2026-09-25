@@ -41,6 +41,10 @@ export function services(): Services {
   teams.snapshot.subscribe((snapshot) => sync.useTeam(snapshot));
   // The channel's presence carries the name the player goes by now.
   profiles.profile.subscribe((profile) => teams.setUser(teams.userId.get(), profile?.displayName ?? ''));
+  // A counted run can change the best score and the number of games played.
+  made.scores.accepted.subscribe((accepted) => {
+    if (accepted) void profiles.refresh();
+  });
   return made;
 }
 

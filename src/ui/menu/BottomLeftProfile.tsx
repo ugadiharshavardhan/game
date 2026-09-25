@@ -91,7 +91,7 @@ export function BottomLeftProfile({ profile, onUpdateProfile, onSignOut }: Botto
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-night-800 bg-night-900/60 p-3 text-center">
                 <span className="block text-[10px] uppercase tracking-wider text-dusk-400">Best Score</span>
-                <span className="font-display text-xl text-lamp-400">{profile.bestIndividualScore || 0}</span>
+                <span className="font-display text-xl text-lamp-400">{profile.bestScore ?? 0}</span>
               </div>
               <div className="rounded-xl border border-night-800 bg-night-900/60 p-3 text-center">
                 <span className="block text-[10px] uppercase tracking-wider text-dusk-400">Runs Completed</span>

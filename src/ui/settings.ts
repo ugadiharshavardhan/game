@@ -1,13 +1,11 @@
 /**
- * Everything the player can change, kept in this browser and sent to the engine when it starts.
+ * Everything the player can change, saved to their profile in Supabase (so it follows the account
+ * to every device) and sent to the engine when it starts.
  *
  * Quality is the one that matters on a phone: it decides the shadow map, the pixel ratio and how
  * far the village draws. 'auto' looks at the device once and picks.
  */
-import { EventBus } from '../shared/EventBus';
 import type { GameSettings, QualityLevel } from '../shared/types';
-
-const KEY = 'moonlight-seva.settings';
 
 export const DEFAULT_SETTINGS: GameSettings = {
   sensitivity: 1,
@@ -17,22 +15,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   showTouchControls: 'auto',
 };
 
-export function loadSettings(): GameSettings {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<GameSettings>) } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-export function saveSettings(settings: GameSettings): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(settings));
-  } catch {
-    // Private browsing: the settings hold for this session.
-  }
-  EventBus.emit('game:settings', settings);
+/** The profile's saved settings over the defaults (the database keeps only known, valid keys). */
+export function withDefaults(saved: Partial<GameSettings> | null | undefined): GameSettings {
+  return { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
 }
 
 /**

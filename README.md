@@ -75,8 +75,9 @@ the same moon*, sees their teammates as translucent ghosts with name tags, and p
 puja: their own bag, their own exposure, their own shelter, their own score. Teams have their own
 leaderboard, kept separate from the players' one.
 
-Supabase is the backend and the single source of truth: teams, members, rounds, every run and
-every team result live in Postgres (`supabase/migrations/`), every write is an atomic database
+Supabase is the backend and the single source of truth: profiles and their settings, teams and
+their codes, members, rounds, every run and every team result live in Postgres
+(`supabase/migrations/`) — nothing is kept in the browser's storage — every write is an atomic database
 function behind Row Level Security, and scores are recomputed in the database from the run's
 statistics, so a modified client can change what it shows and not what is recorded. Lobbies,
 presence and ghosts travel over a private Supabase Realtime channel per team.
@@ -90,7 +91,12 @@ presence and ghosts travel over a private Supabase Realtime channel per team.
    (`<instance>.clerk.accounts.dev`, shown on the Clerk page above).
 
 Without steps 2–3 Supabase rejects the Clerk token and every team action fails with
-"Your sign-in could not be verified" (the console says why).
+"Your sign-in could not be verified" (the console says why). There is no offline fallback: a
+team that isn't in the database doesn't exist, so a code always works from any device.
+
+`npm run e2e` checks the whole chain against the real project: two throwaway Clerk users, one
+creates a team, the other joins it by code from a separate client, both ready up, the round
+starts, the private Realtime channel announces it, RLS hides other teams.
 
 ## Commands
 

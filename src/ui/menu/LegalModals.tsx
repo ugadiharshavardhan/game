@@ -67,7 +67,7 @@ export function TermsOfServiceModal({ isOpen, onClose }: { isOpen: boolean; onCl
         <section className="space-y-1.5">
           <h4 className="font-semibold text-white">1. Acceptance of Terms</h4>
           <p>
-            By launching Moonlight Seva, logging in via Google or Guest mode, or connecting to multiplayer sessions, you agree to comply with and be bound by these Terms of Service.
+            By launching Moonlight Seva, logging in via Google, or connecting to multiplayer sessions, you agree to comply with and be bound by these Terms of Service.
           </p>
         </section>
 
@@ -121,8 +121,8 @@ export function PrivacyPolicyModal({ isOpen, onClose }: { isOpen: boolean; onClo
           </p>
           <ul className="list-disc pl-5 space-y-1 text-night-300">
             <li><strong className="text-white">Google Sign-In (Clerk):</strong> We receive your verified email, display name, and avatar picture to populate your in-game profile.</li>
-            <li><strong className="text-white">Guest Mode:</strong> A temporary random ID and selected avatar are stored locally in your browser’s localStorage. No external credentials are captured.</li>
-            <li><strong className="text-white">Telemetry & Progress:</strong> Seva completion stats, offering tallies, and ritual timings are stored locally or synchronized in your active multiplayer room.</li>
+            <li><strong className="text-white">Profile:</strong> Your chosen display name, optional campus, avatar and game settings are stored in our database (Supabase), keyed to your account.</li>
+            <li><strong className="text-white">Progress:</strong> Seva completion stats, offering tallies, ritual timings, teams and scores are stored in our database so they follow you across devices and appear on the leaderboards (display name, campus and scores only).</li>
           </ul>
         </section>
 
@@ -148,7 +148,7 @@ export function PrivacyPolicyModal({ isOpen, onClose }: { isOpen: boolean; onClo
         <section className="space-y-1.5">
           <h4 className="font-semibold text-white">4. Your Data Rights & Deletion</h4>
           <p>
-            You can clear your local browser storage or log out of Clerk at any time. When logging out, all session keys and temporary multiplayer state are immediately purged.
+            You can log out of Clerk at any time, which ends your session on this device. To have your profile, teams and scores deleted from our database, contact the organisers with the email you signed in with.
           </p>
         </section>
       </div>
