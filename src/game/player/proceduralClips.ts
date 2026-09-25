@@ -90,6 +90,21 @@ const bump = (p: number, c: number, w: number) => {
 
 // ---- the rig ------------------------------------------------------------------------------------
 
+/** Finds a bone in the model by name, supporting standard, prefixed, or suffixed bone names (e.g. Hips_01, mixamorigHips). */
+export function findBone(model: Object3D, name: string): Bone | undefined {
+  let b = (model.getObjectByName(`mixamorig${name}`) ??
+    model.getObjectByName(`mixamorig:${name}`) ??
+    model.getObjectByName(name)) as Bone | undefined;
+  if (b && (b as any).isBone !== false) return b;
+  const pattern = new RegExp(`^(mixamorig:?|AvatarRoot_?)?${name}(_\\d+)?$`, 'i');
+  model.traverse((o) => {
+    if (!b && pattern.test(o.name)) {
+      b = o as Bone;
+    }
+  });
+  return b;
+}
+
 export class Rig {
   readonly bones = new Map<string, Bone>();
   private readonly rest = new Map<string, Quaternion>();
@@ -105,7 +120,7 @@ export class Rig {
   constructor(model: Object3D) {
     this.model = model;
     for (const name of ORDER) {
-      const b = model.getObjectByName(`mixamorig${name}`) as Bone | undefined;
+      const b = findBone(model, name);
       if (b) {
         this.bones.set(name, b);
         this.rest.set(name, b.quaternion.clone());
@@ -279,7 +294,7 @@ export class Rig {
 
 // ---- the poses ----------------------------------------------------------------------------------
 
-/** Arms hanging naturally from the A-pose, elbows soft. */
+/** Arms hanging naturally, elbows soft. */
 export const armsDown = (extraZ = 0, elbow = -12): Turn[] => [
   ['LeftArm', 'z', -40 - extraZ],
   ['RightArm', 'z', 40 + extraZ],
@@ -362,7 +377,7 @@ export function gaitPose(g: Gait, phase: number, crouch = 0): Pose {
       ['Spine2', 'y', g.pelvisYaw * 0.4 * c],
       ['Head', 'x', -g.lean * 0.6 - 18 * crouch],
       ['Head', 'y', -g.pelvisYaw * 0.3 * c],
-      ...armsDown(22 - 4 * crouch, 0),
+      ...armsDown(32 - 4 * crouch, 0),
       ['LeftArm', 'x', arm + bias - 20 * crouch],
       ['RightArm', 'x', -arm + bias - 20 * crouch],
       ['LeftForeArm', 'x', pump(arm)],
@@ -396,7 +411,7 @@ export function idlePose(t: number, crouch: number): Pose {
       ['Neck', 'x', -0.6 * breath],
       ['Head', 'x', 3 - 18 * crouch],
       ['Head', 'y', 4 * Math.sin((TAU * t) / 7 + 1)],
-      ...armsDown(26 - 1 * breath, crouch ? -45 : -14),
+      ...armsDown(34 - 1 * breath, crouch ? -45 : -14),
       ...(crouch ? ([['LeftArm', 'x', -28], ['RightArm', 'x', -28]] as Turn[]) : []),
       ['LeftUpLeg', 'x', legs.thigh + 2 * shift * (1 - crouch)],
       ['RightUpLeg', 'x', legs.thigh - 2 * shift * (1 - crouch)],
@@ -545,6 +560,26 @@ const namasteTurns = (p: readonly number[]): Turn[] => [
   ['RightForeArm', 'y', -p[4]],
 ];
 
+/** The turns of an overhead worship pose: arms raised, elbows bent outward, palms joined above head. */
+const overheadTurns = (p: readonly number[]): Turn[] => [
+  ['LeftArm', 'z', p[0]],
+  ['RightArm', 'z', -p[0]],
+  ['LeftArm', 'x', p[1]],
+  ['RightArm', 'x', p[1]],
+  ['LeftArm', 'y', p[2]],
+  ['RightArm', 'y', -p[2]],
+  ['LeftForeArm', 'x', p[3]],
+  ['RightForeArm', 'x', p[3]],
+  ['LeftForeArm', 'y', p[4]],
+  ['RightForeArm', 'y', -p[4]],
+  ['LeftForeArm', 'z', p[5] ?? 0],
+  ['RightForeArm', 'z', -(p[5] ?? 0)],
+  ['LeftHand', 'x', p[6] ?? 0],
+  ['RightHand', 'x', p[6] ?? 0],
+  ['LeftHand', 'z', p[7] ?? 0],
+  ['RightHand', 'z', -(p[7] ?? 0)],
+];
+
 /**
  * A namaste whose palms actually meet, for THIS skeleton.
  *
@@ -555,29 +590,29 @@ const namasteTurns = (p: readonly number[]): Turn[] => [
  * the chest, a hand's breadth in front of it. It takes a few hundred trial poses and a few
  * milliseconds.
  */
-export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pose } {
+export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pose; worship: Pose } {
   const head = rig.bones.get('Head');
   const l = rig.bones.get('LeftHand');
   const r = rig.bones.get('RightHand');
-  if (!head || !l || !r) return { namaste: NAMASTE, bow: BOW };
+  if (!head || !l || !r) return { namaste: NAMASTE, bow: BOW, worship: BOW };
   model.updateMatrixWorld(true);
   const inFrame = (b: Object3D) => model.worldToLocal(b.getWorldPosition(new Vector3()));
   rig.reset();
   model.updateMatrixWorld(true);
   const height = inFrame(head).y;
 
-  /** The five arm numbers that put both palms at `target`, given whatever the torso is already doing. */
-  const solve = (extra: Turn[], target: Vector3, start: number[]): number[] => {
+  /** The arm numbers that put both palms at `target`, given whatever the torso is already doing. */
+  const solve = (extra: Turn[], target: Vector3, start: number[], turnsFn = namasteTurns): number[] => {
     const cost = (p: number[]) => {
-      rig.apply({ turns: [...namasteTurns(p), ...extra] });
+      rig.apply({ turns: [...turnsFn(p), ...extra] });
       model.updateMatrixWorld(true);
       const a = inFrame(l);
       const b = inFrame(r);
-      return Math.hypot(a.x - 0.02, a.y - target.y, a.z - target.z) + Math.hypot(b.x + 0.02, b.y - target.y, b.z - target.z);
+      return Math.hypot(a.x - 0.02, a.y - target.y, a.z - target.z) + Math.hypot(b.x + 0.02, b.y - target.y, b.z - target.z) + a.distanceTo(b) * 2;
     };
     let p = start;
     let best = cost(p);
-    for (const step of [20, 10, 5, 2, 1]) {
+    for (const step of [20, 10, 5, 2, 1, 0.5]) {
       for (let round = 0; round < 40; round++) {
         let improved = false;
         for (let i = 0; i < p.length; i++) {
@@ -604,9 +639,25 @@ export function fitNamaste(rig: Rig, model: Object3D): { namaste: Pose; bow: Pos
   // further forward, with the lean already in.
   const lean: Turn[] = [['Spine', 'x', 22], ['Spine1', 'x', 8], ['Head', 'x', 24]];
   const bowed = solve(lean, new Vector3(0, height * 0.72, 0.36), upright);
+
+  // Overhead worship posture (body bent forward reverently, hands joined directly above top of head)
+  const worshipLean: Turn[] = [
+    ['Spine', 'x', 16],
+    ['Spine1', 'x', 8],
+    ['Spine2', 'x', 4],
+    ['Neck', 'x', -6],
+    ['Head', 'x', 10],
+  ];
+  rig.apply({ turns: worshipLean });
+  model.updateMatrixWorld(true);
+  const bentHead = inFrame(head);
+  const overheadTarget = new Vector3(0, bentHead.y + 0.15, bentHead.z + 0.05);
+  const overheadP = solve(worshipLean, overheadTarget, [-115, -120, 30, -60, -24, 30, 0, 0], overheadTurns);
+  const worship: Pose = { turns: [...overheadTurns(overheadP), ...worshipLean] };
+
   rig.reset();
   model.updateMatrixWorld(true);
-  return { namaste: { turns: namasteTurns(upright) }, bow: { turns: [...namasteTurns(bowed), ...lean] } };
+  return { namaste: { turns: namasteTurns(upright) }, bow: { turns: [...namasteTurns(bowed), ...lean] }, worship };
 }
 
 /** …and a bow over them. */
@@ -614,7 +665,7 @@ export const BOW: Pose = { ...NAMASTE, turns: [...NAMASTE.turns, ['Spine', 'x', 
 
 /** Palms together at the chest, on the knees: the moment before the bow. Ankles are planted, so the
  *  hips settle to wherever the folded legs put them. */
-const KNEEL: Pose = {
+export const KNEEL: Pose = {
   turns: [
     ['Spine', 'x', 2],
     ['Head', 'x', 8],
@@ -642,7 +693,7 @@ const KNEEL: Pose = {
  * joined hands stretched out in front of it — the way a devotee bows to Bappa. The hips go back a
  * little so the bow ends before the altar, not on it.
  */
-const PRANAM: Pose = {
+export const PRANAM: Pose = {
   turns: [
     ['Spine', 'x', 42],
     ['Spine1', 'x', 26],
@@ -964,12 +1015,19 @@ export function buildProceduralClips(model: Object3D, speeds: { slow: number; wa
   clips.push(rig.clip('TurnRight', 0.7, fps, keyed([[0, STAND], [0.25, PIVOT_RIGHT], [0.5, PIVOT_RIGHT], [0.7, STAND]])));
   clips.push(rig.clip('Pickup', 1.4, fps, keyed([[0, STAND], [0.55, REACH_DOWN], [0.8, REACH_DOWN], [1.15, HOLD], [1.4, STAND]])));
   clips.push(rig.clip('Interact', 1.0, fps, keyed([[0, STAND], [0.38, REACH_OUT], [0.62, REACH_OUT], [1.0, STAND]])));
-  const { namaste, bow } = fitNamaste(rig, model);
-  clips.push(rig.clip('Celebrate', 2.2, fps, keyed([[0, STAND], [0.5, namaste], [0.9, bow], [1.35, bow], [1.75, namaste], [2.2, STAND]])));
-  // Offering and praying at the temple: a namaste, down onto the knees, the full bow, and back up.
-  // The gameplay effect lands at the clip's midpoint, which is the deepest part of the bow.
+  const { namaste, worship } = fitNamaste(rig, model);
+  clips.push(rig.clip('Celebrate', 2.4, fps, keyed([[0, STAND], [0.6, worship], [1.2, worship], [1.8, worship], [2.4, STAND]])));
+  // Offering and praying at the temple: hands to chest, bowing with hands joined overhead at the top of the head (reverent worship posture), and back up.
   clips.push(
-    rig.clip('Pranam', 4.6, fps, keyed([[0, STAND], [0.4, namaste], [1.2, KNEEL], [1.9, PRANAM], [2.7, PRANAM], [3.4, KNEEL], [4.1, namaste], [4.6, STAND]])),
+    rig.clip('Pranam', 4.4, fps, keyed([
+      [0, STAND],
+      [0.6, namaste],
+      [1.4, worship],
+      [2.2, worship],
+      [3.0, worship],
+      [3.7, namaste],
+      [4.4, STAND],
+    ])),
   );
   clips.push(rig.clip('EnterHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));
   clips.push(rig.clip('ExitHouse', 0.8, fps, keyed([[0, STAND], [0.3, PUSH], [0.5, PUSH], [0.8, STAND]])));

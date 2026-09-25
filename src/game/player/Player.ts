@@ -10,7 +10,7 @@ import type { ShelterActor } from '../shelter/ShelterManager';
 import { type PlayerAction, CharacterAnimationController } from './CharacterAnimationController';
 import { PlayerAudio } from './PlayerAudio';
 import { PlayerController } from './PlayerController';
-import { buildProceduralClips } from './proceduralClips';
+import { buildProceduralClips, findBone } from './proceduralClips';
 import { PlayerState, PlayerStateId } from './PlayerState';
 import { Posture, PostureMachine, type PostureContext, type PostureRefusal } from './posture';
 
@@ -89,8 +89,8 @@ export class Player implements InteractionActor, ShelterActor, CameraTarget {
     this.audio = new PlayerAudio(
       bank,
       config,
-      model.getObjectByName('mixamorigLeftFoot') ?? model.getObjectByName('mixamorig:LeftFoot'),
-      model.getObjectByName('mixamorigRightFoot') ?? model.getObjectByName('mixamorig:RightFoot'),
+      findBone(model, 'LeftFoot'),
+      findBone(model, 'RightFoot'),
     );
     this.unsubscribe = this.state.onChange((_, to) => EventBus.emit('ui:player-state', { state: to }));
     this.unsubscribePosture = this.posture.onChange((_, to) => {

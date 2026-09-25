@@ -7,7 +7,7 @@ interface MovementDebugOverlayProps {
   character?: string;
 }
 
-export function MovementDebugOverlay({ playerState, character = 'character.glb' }: MovementDebugOverlayProps) {
+export function MovementDebugOverlay({ playerState, character = 'indian_village_boy.glb' }: MovementDebugOverlayProps) {
   const [minimized, setMinimized] = useState(false);
   const [activeAction, setActiveAction] = useState<string>('idle');
   const [debugVisible] = useState(() => {

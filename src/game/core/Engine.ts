@@ -180,7 +180,7 @@ export class Engine {
       const { buildVillage } = await import('../world/village/Village');
       return buildVillage(this.scene, this.renderer, physics, params.get('view') === 'greybox' ? 'greybox' : 'art', gameplay.services, this.quality, this.perf.live);
     };
-    const charFile = this.options.character === 'woman' ? 'sareelady.glb' : this.options.character === 'pujari' ? 'pujari.glb' : 'character.glb';
+    const charFile = this.options.character === 'woman' ? 'sareelady.glb' : this.options.character === 'pujari' ? 'pujari.glb' : 'indian_village_boy.glb';
     const [world, gltf, pores] = await Promise.all([
       buildWorld(),
       new GLTFLoader().loadAsync(`${BASE}assets/models/${charFile}`),
@@ -193,8 +193,8 @@ export class Engine {
     }
     this.world = world;
     this.sun = world.sun ?? null;
-    if (charFile === 'character.glb') {
-      gltf.scene.scale.setScalar(0.82);
+    if (charFile === 'indian_village_boy.glb') {
+      gltf.scene.scale.setScalar(1.22);
     } else if (charFile === 'sareelady.glb') {
       gltf.scene.position.y += 1.0;
     }
